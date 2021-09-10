@@ -25,14 +25,14 @@ public extension Shell {
       try output.withFileDescriptor { output in
         try error.withFileDescriptor { error in
           try childProcessManager
-            .runManagedProcess(
+            .run(
+              executablePath: executable.path,
+              arguments: arguments.compactMap { $0 },
               workingDirectory: directory.filePath.string,
               environmentValues: environment.values,
               input: input,
               output: output,
-              error: error,
-              executablePath: executable.path.string,
-              arguments: arguments.compactMap { $0 })
+              error: error)
         }
       }
     }

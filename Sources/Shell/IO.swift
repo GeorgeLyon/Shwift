@@ -4,7 +4,7 @@ import SystemPackage
 
 extension Shell {
 
-  public struct Input {
+  public struct Input: Sendable {
 
     public static let standardInput = Input(kind: .unmanaged(.standardInput))
 
@@ -38,7 +38,7 @@ extension Shell {
     private let kind: Kind
   }
 
-  public struct Output {
+  public struct Output: Sendable {
 
     public static let standardOutput = Output(kind: .unmanaged(.standardOutput))
 

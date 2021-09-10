@@ -1,34 +1,22 @@
 import Foundation
 
-protocol InterruptHandler: AnyObject, Sendable {
+protocol InterruptHandler: AnyObject {
   /**
    Called if the process receives a `SIGINT` while this handler is registered with the shared interrupt manager.
 
    This method is called on `manager.queue`
    */
-  func handleInterrupt() async
+  func handleInterrupt()
 }
 
-final class InterruptManager: @unchecked Sendable {
+final class InterruptManager {
 
   init() {
     source = DispatchSource.makeSignalSource(signal: SIGINT, queue: Self.queue)
     source.setEventHandler { [weak self] in
       guard let self = self else { return }
-      let sem = DispatchSemaphore(value: 0)
-      let entries = self.entries
+      self.entries.values.compactMap(\.handler).forEach { $0.handleInterrupt() }
       self.entries.removeAll()
-      Task {
-        await withTaskGroup(of: Void.self) { group in
-          entries.values.forEach { entry in
-            group.addTask {
-              await entry.handler?.handleInterrupt()
-            }
-          }
-        }
-        sem.signal()
-      }
-      sem.wait()
       exit(SIGINT)
     }
     source.resume()
@@ -86,7 +74,7 @@ final class InterruptManager: @unchecked Sendable {
     }
   }
   
-  private struct Entry: Sendable {
+  private struct Entry {
     weak var handler: InterruptHandler?
   }
   private var entries: [ObjectIdentifier: Entry] = [:]

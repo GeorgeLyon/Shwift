@@ -4,7 +4,7 @@ import SystemPackage
 /**
  An object which manages child processes
  */
-public actor ChildProcessManager: InterruptHandler {
+public final class ChildProcessManager: InterruptHandler, @unchecked Sendable {
 
   /**
    - Parameters:
@@ -29,35 +29,41 @@ public actor ChildProcessManager: InterruptHandler {
     interruptManager?.unregister(self)
   }
 
-  public func runManagedProcess(
+  public func run(
+    executablePath: FilePath,
+    arguments: [String],
     workingDirectory: String,
     environmentValues: [String: String],
     input: FileDescriptor,
     output: FileDescriptor,
-    error: FileDescriptor,
-    executable: FilePath,
-    arguments: [String]
+    error: FileDescriptor
   ) async throws {
+    let queue = queue
     let process = Process()
     let id = ObjectIdentifier(process)
-    process.executableURL = URL(fileURLWithPath: executable.string)
+    process.executableURL = URL(fileURLWithPath: executablePath.string)
     process.arguments = arguments
     process.environment = environmentValues
     process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
     process.standardInput = input.handle
     process.standardOutput = output.handle
     process.standardError = error.handle
-    managedProcesses[id] = process
+    try queue.sync {
+      try process.run()
+      managedProcesses[id] = process
+    }
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       process.terminationHandler = { _ in continuation.resume() }
       do {
         try process.run()
-        continuation.resume()
       } catch {
         continuation.resume(throwing: error)
       }
     }
-    managedProcesses.removeValue(forKey: id)
+    queue.sync {
+      let entry = managedProcesses.removeValue(forKey: id)
+      precondition(entry != nil)
+    }
     switch process.terminationReason {
     case .exit:
       break
@@ -70,7 +76,9 @@ public actor ChildProcessManager: InterruptHandler {
       throw Shell.Executable.Error
         .nonzeroTerminationStatus(process.terminationStatus)
     }
+      
   }
+
 
   public func terminateManagedProcesses() {
     for process in managedProcesses.values {
@@ -79,12 +87,13 @@ public actor ChildProcessManager: InterruptHandler {
     managedProcesses.removeAll()
   }
 
-  func handleInterrupt() async {
+  func handleInterrupt() {
     terminateManagedProcesses()
   }
 
   private var managedProcesses: [ObjectIdentifier: Process] = [:]
   private let interruptManager: InterruptManager?
+  private let queue = DispatchQueue(label: #fileID)
 }
 
 extension Shell.Executable {
