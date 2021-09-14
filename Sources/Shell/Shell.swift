@@ -32,6 +32,6 @@ public struct Shell: Sendable {
   
   public let childProcessManager: ChildProcessManager
   
-  private let nioContext: NIOContext = .shared
+  let builtinEngine = BuiltinEngine()
   
 }
