@@ -19,23 +19,11 @@ extension Shell {
       Input(kind: .unmanaged(FileDescriptor(rawValue: fileDescriptor)))
     }
 
-    func withFileDescriptor<T>(_ body: (FileDescriptor) throws -> T) throws -> T {
-      switch kind {
-      case .unmanaged(let value):
-        return try body(value)
-      case .nullDevice:
-        let fileDescriptor =
-          try FileDescriptor
-          .open(nullDevicePath, .readOnly)
-        return try fileDescriptor.closeAfter { try body(fileDescriptor) }
-      }
-    }
-
-    private enum Kind {
+    fileprivate enum Kind {
       case unmanaged(FileDescriptor)
       case nullDevice
     }
-    private let kind: Kind
+    fileprivate let kind: Kind
   }
 
   public struct Output: Sendable {
@@ -54,27 +42,69 @@ extension Shell {
     static func unmanaged(_ fileDescriptor: CInt) -> Self {
       Output(kind: .unmanaged(FileDescriptor(rawValue: fileDescriptor)))
     }
-
-    func withFileDescriptor<T>(_ body: (FileDescriptor) throws -> T) throws -> T {
-      switch kind {
-      case .unmanaged(let value):
-        return try body(value)
-      case .nullDevice:
-        let fileDescriptor =
-          try FileDescriptor
-          .open(nullDevicePath, .writeOnly)
-        return try fileDescriptor.closeAfter { try body(fileDescriptor) }
-      }
-    }
     
-    private struct PipeError: Error { }
-
-    private enum Kind {
+    fileprivate enum Kind {
       case unmanaged(FileDescriptor)
       case nullDevice
     }
-    private let kind: Kind
+    fileprivate let kind: Kind
   }
+}
+
+extension Shell {
+  func withFileDescriptor<T>(
+    for input: Input,
+    operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    switch input.kind {
+    case .unmanaged(let fileDescriptor):
+      return try await operation(fileDescriptor)
+    case .nullDevice:
+      return try await withNullDevice(.readOnly, operation: operation)
+    }
+  }
+  
+  func withFileDescriptor<T>(
+    for output: Output,
+    operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    switch input.kind {
+    case .unmanaged(let fileDescriptor):
+      return try await operation(fileDescriptor)
+    case .nullDevice:
+      return try await withNullDevice(.writeOnly, operation: operation)
+    }
+  }
+  
+  private func withNullDevice<T>(
+    _ accessMode: FileDescriptor.AccessMode,
+    operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    let fileDescriptor =
+      try FileDescriptor
+      .open(nullDevicePath, accessMode)
+    do {
+      let result = try await operation(fileDescriptor)
+      try fileDescriptor.close()
+      return result
+    } catch {
+      assertionFailure()
+      close(fileDescriptor)
+      throw error
+    }
+  }
+  
+  private func close(_ fileDescriptor: FileDescriptor) {
+    do {
+      try fileDescriptor.close()
+    } catch let error {
+      /// Eventually we may want to report these errors to the shell
+      assertionFailure()
+      /// We need to give the error an explicit name as LLDB gets confused when referencing it using the implicit name
+      _ = error
+    }
+  }
+  
 }
 
 private let nullDevicePath = "/dev/null"

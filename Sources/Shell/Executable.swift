@@ -20,15 +20,15 @@ public extension Shell {
   func execute(
     _ executable: Shell.Executable,
     arguments: [String?] = []
-  ) throws {
-    try input.withFileDescriptor { input in
-      try output.withFileDescriptor { output in
-        try error.withFileDescriptor { error in
-          try childProcessManager
+  ) async throws {
+    try await withFileDescriptor(for: input) { input in
+      try await withFileDescriptor(for: output) { output in
+        try await withFileDescriptor(for: error) { error in
+          try await childProcessManager
             .run(
               executablePath: executable.path,
               arguments: arguments.compactMap { $0 },
-              workingDirectory: directory.filePath.string,
+              workingDirectory: directory.string,
               environmentValues: environment.values,
               input: input,
               output: output,
