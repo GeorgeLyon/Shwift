@@ -6,7 +6,8 @@ import SystemPackage
  */
 @_exported import struct SystemPackage.FilePath
 
-public struct Shell: Sendable {
+/// TODO: Sendable conformance is unchecked until the compiler gets better post Swift 5.5
+public struct Shell: @unchecked Sendable {
   
   /**
    Creates a `Shell`.

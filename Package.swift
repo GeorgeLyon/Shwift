@@ -36,6 +36,9 @@ let package = Package(
       name: "ShellTests",
       dependencies: [
         "Shell",
+      ],
+      resources: [
+        .copy("ABC.txt")
       ]),
   ]
 )

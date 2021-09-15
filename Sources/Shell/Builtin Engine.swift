@@ -112,17 +112,16 @@ extension Shell {
   
   /**
    Write this shell's `input` to the specified file
-   
-   - Parameters:
-    - append: If `true`, append to the file, if `false` overwrite the file; defaults to `false`.
    */
-  func write(to filePath: FilePath, append: Bool = false) async throws {
+  func write(
+    to filePath: FilePath,
+    openOptions: SystemPackage.FileDescriptor.OpenOptions = []) async throws {
     try await builtin { handle in
       let eventLoop = builtinContext.eventLoopGroup.next()
       let fileHandle = try await builtinContext.fileIO.openFile(
         path: directory.pushing(filePath).string,
         mode: .write,
-        flags: append ? .posix(flags: O_APPEND, mode: 0) : .default,
+        flags: .posix(flags: openOptions.rawValue, mode: 0),
         eventLoop: eventLoop)
         .get()
       handle.addCleanupTask { try fileHandle.close() }
@@ -287,10 +286,14 @@ extension Builtin {
               }
               syncIterator = sequenceNext
                 .compactMap { event -> ByteBuffer? in
-                  guard case let .read(buffer) = event else {
+                  switch event {
+                  case .read(let buffer):
+                    return buffer
+                  case .error(let error as NIOExtrasErrors.LeftOverBytesError):
+                    return error.leftOverBytes
+                  default:
                     return nil
                   }
-                  return buffer
                 }
                 .makeIterator()
             }
@@ -385,7 +388,8 @@ extension Builtin {
     
     private let storage: Storage
     
-    private final class Storage: Sendable {
+    /// TODO: Sendable conformance is unchecked until the compiler gets better post Swift 5.5
+    private final class Storage: @unchecked Sendable {
       let threadPool: NIOThreadPool
       let eventLoopGroup: MultiThreadedEventLoopGroup
       let fileIO: NonBlockingFileIO

@@ -5,6 +5,7 @@ public final class InboundAsyncSequence<InboundIn>: ChannelInboundHandler, Async
   public enum Event {
     case read(InboundIn)
     case isActive(Bool)
+    case error(Swift.Error)
   }
   
   public typealias Element = [Event]
@@ -43,6 +44,12 @@ public final class InboundAsyncSequence<InboundIn>: ChannelInboundHandler, Async
   public func channelReadComplete(context: ChannelHandlerContext) {
     context.fireChannelReadComplete()
     flushEvents()
+  }
+  
+  public func errorCaught(context: ChannelHandlerContext, error: Swift.Error) {
+    enqueue(.error(error))
+    flushEvents()
+    context.fireErrorCaught(error)
   }
 
   public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
@@ -88,7 +95,6 @@ public final class InboundAsyncSequence<InboundIn>: ChannelInboundHandler, Async
     guard let continuation = continuation else {
       return
     }
-    self.continuation = nil
 
     let result: [Event]?
     switch state {
@@ -97,10 +103,15 @@ public final class InboundAsyncSequence<InboundIn>: ChannelInboundHandler, Async
     case .buffered(let events):
       state = .idle
       result = events
-    case .inputClosed(let remainder):
+    case .inputClosed(let remainder?):
       state = .inputClosed(remainder: nil)
       result = remainder
+    case .inputClosed:
+      assertionFailure()
+      return
     }
+    
+    self.continuation = nil
     continuation.resume(returning: result)
   }
 
@@ -124,9 +135,12 @@ public final class InboundAsyncSequence<InboundIn>: ChannelInboundHandler, Async
             /// We expect to only await on handlers that are part of a `ChannelPipeline`
             context.read()
           case .buffered(let events):
+            state = .idle
             continuation.resume(returning: events)
           case .inputClosed(let remainder):
+            state = .inputClosed(remainder: nil)
             continuation.resume(returning: remainder)
+            
           }
         }
       }

@@ -15,10 +15,14 @@ extension Shell {
      */
     public static let nullDevice = Input(kind: .nullDevice)
 
-    static func unmanaged(_ fileDescriptor: CInt) -> Self {
-      Input(kind: .unmanaged(FileDescriptor(rawValue: fileDescriptor)))
+    init(_ fileDescriptor: FileDescriptor){
+      self.kind = .unmanaged(fileDescriptor)
     }
 
+    private init(kind: Kind) {
+      self.kind = kind
+    }
+    
     fileprivate enum Kind {
       case unmanaged(FileDescriptor)
       case nullDevice
@@ -39,8 +43,12 @@ extension Shell {
      */
     public static let nullDevice = Output(kind: .nullDevice)
 
-    static func unmanaged(_ fileDescriptor: CInt) -> Self {
-      Output(kind: .unmanaged(FileDescriptor(rawValue: fileDescriptor)))
+    init(_ fileDescriptor: FileDescriptor){
+      self.kind = .unmanaged(fileDescriptor)
+    }
+
+    private init(kind: Kind) {
+      self.kind = kind
     }
     
     fileprivate enum Kind {
@@ -68,7 +76,7 @@ extension Shell {
     for output: Output,
     operation: (FileDescriptor) async throws -> T
   ) async throws -> T {
-    switch input.kind {
+    switch output.kind {
     case .unmanaged(let fileDescriptor):
       return try await operation(fileDescriptor)
     case .nullDevice:
@@ -85,10 +93,14 @@ extension Shell {
       .open(nullDevicePath, accessMode)
     do {
       let result = try await operation(fileDescriptor)
-      try fileDescriptor.close()
+      do {
+        try fileDescriptor.close()
+      } catch {
+        print(error)
+        assertionFailure()
+      }
       return result
     } catch {
-      assertionFailure()
       close(fileDescriptor)
       throw error
     }

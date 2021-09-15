@@ -4,7 +4,7 @@ import SystemPackage
 extension Shell {
   
   public struct Executable {
-    fileprivate let path: FilePath
+    let path: FilePath
   }
   
 }
