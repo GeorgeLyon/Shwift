@@ -32,6 +32,6 @@ public struct Shell: Sendable {
   
   public let childProcessManager: ChildProcessManager
   
-  let builtinEngine = BuiltinEngine()
+  let builtinContext = Builtin.Context()
   
 }

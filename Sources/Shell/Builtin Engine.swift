@@ -5,10 +5,18 @@ import _NIOConcurrency
 import SystemPackage
 import class Foundation.DispatchQueue
 
+/**
+ - note: The core `Shell` library provides only two builtins: `read` and `write` for reading from and writing to files, respectively. We provide these because they are extremely fundamental functionality for shells and we can implement them using `NIO` without exposing this dependency to higher level frameworks. Other builtins should be implemented in higher level frameworks, like `Script` to avoid having duplicate APIs on `Shell`.
+ */
+
+
 extension Shell {
   
-  func builtin<T>(_ body: (BuiltinHandle) async throws -> T) async throws -> T {
-    let bootstrap = NIOPipeBootstrap(group: builtinEngine.context.eventLoopGroup)
+  /**
+   Executes the provided builtin
+   */
+  public func builtin<T>(_ body: (inout Builtin.Handle) async throws -> T) async throws -> T {
+    let bootstrap = NIOPipeBootstrap(group: builtinContext.eventLoopGroup)
       .channelOption(ChannelOptions.autoRead, value: false)
       .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
     
@@ -51,15 +59,26 @@ extension Shell {
       throw error
     }
     
-    let result: Result<T, Error>
+    let results: [Result<T, Error>]
     do {
-      let handle = BuiltinHandle(
-        input: BuiltinHandle.InputStream(channel: io),
-        output: BuiltinHandle.OutputStream(channel: io),
-        error: BuiltinHandle.OutputStream(channel: error))
-      result = .success(try await body(handle))
-    } catch {
-      result = .failure(error)
+      var handle = Builtin.Handle(
+        input: Builtin.Input(channel: io),
+        output: Builtin.Output(channel: io),
+        error: Builtin.Output(channel: error))
+      let result: Result<T, Error>
+      do {
+        result = .success(try await body(&handle))
+      } catch {
+        result = .failure(error)
+      }
+      results = handle.cleanupTasks.compactMap { task in
+        do {
+          try task()
+          return nil
+        } catch {
+          return .failure(error)
+        }
+      } + [result]
     }
     
     /// We want to attempt to close both channels even if the first one fails
@@ -67,30 +86,98 @@ extension Shell {
       try await future.get()
     }
     
-    return try result.get()
+    /// We may eventually want to report additional errors from cleanup tasks
+    return try results.first!.get()
   }
+  
+  /**
+   Push the contents of a file to this shell's `output`
+   */
+  func read(from filePath: FilePath) async throws {
+    try await builtin { handle in
+      let eventLoop = builtinContext.eventLoopGroup.next()
+      let (fileHandle, region) = try await builtinContext.fileIO.openFile(
+        path: directory.pushing(filePath).string,
+        eventLoop: eventLoop)
+        .get()
+      handle.addCleanupTask { try fileHandle.close() }
+      try await builtinContext.fileIO.readChunked(
+        fileRegion: region,
+        allocator: handle.output.channel.allocator,
+        eventLoop: eventLoop,
+        chunkHandler: handle.output.channel.writeAndFlush)
+        .get()
+    }
+  }
+  
+  /**
+   Write this shell's `input` to the specified file
+   
+   - Parameters:
+    - append: If `true`, append to the file, if `false` overwrite the file; defaults to `false`.
+   */
+  func write(to filePath: FilePath, append: Bool = false) async throws {
+    try await builtin { handle in
+      let eventLoop = builtinContext.eventLoopGroup.next()
+      let fileHandle = try await builtinContext.fileIO.openFile(
+        path: directory.pushing(filePath).string,
+        mode: .write,
+        flags: append ? .posix(flags: O_APPEND, mode: 0) : .default,
+        eventLoop: eventLoop)
+        .get()
+      handle.addCleanupTask { try fileHandle.close() }
+      for try await buffer in handle.input.byteBuffers {
+        try await builtinContext.fileIO.write(
+          fileHandle: fileHandle,
+          buffer: buffer,
+          eventLoop: eventLoop)
+          .get()
+      }
+    }
+  }
+}
+
+/**
+ A namespace for types related to providing builtin operations for `Shell`
+ */
+public enum Builtin {
   
 }
 
-struct BuiltinHandle {
-  
-  let input: InputStream
-  let output: OutputStream
-  let error: OutputStream
+// MARK: - IO
+
+
+extension Builtin {
   
   /**
-   A type offering different way to interpret the input of a shell command
+   A type used to implement the behavior of a builtin operation
+   */
+  public struct Handle {
+    public let input: Input
+    public let output: Output
+    public let error: Output
+    
+    public typealias CleanupTask = () throws -> Void
+    public mutating func addCleanupTask(_ task: @escaping CleanupTask) {
+      cleanupTasks.append(task)
+    }
+    fileprivate var cleanupTasks: [CleanupTask] = []
+  }
+  
+  /**
+   A type offering different ways to interpret the input of a shell command
    
    - warning: Shell input is a non-replayable stream, so while we hope to eventually offer many different way to process input, any specific shell command should only ever process it _once_. We enforce this at runtime, and mark the relevant methods as `__consuming`, which currently does nothing but will eventually be enforced once the compiler understands move-only types.
    */
-  struct InputStream {
+  public struct Input {
     
     /**
      Process this input line by line
      */
     public var lines: Strings {
-      __consuming get async {
-        let byteBuffers = await byteBuffers(
+      __consuming get {
+        let byteBuffers = ByteBuffers(
+          channel: channel,
           preprocessor: ByteToMessageHandler(LineBasedFrameDecoder()))
         return Strings(iterator: byteBuffers.makeAsyncIterator())
       }
@@ -115,8 +202,8 @@ struct BuiltinHandle {
     }
     
     var byteBuffers: ByteBuffers {
-      __consuming get async {
-        await byteBuffers(preprocessor: nil)
+      __consuming get {
+        ByteBuffers(channel: channel, preprocessor: nil)
       }
     }
     
@@ -124,6 +211,70 @@ struct BuiltinHandle {
      Iterates over the `ByteBuffer`s yeilded by `Handler`
      */
     struct ByteBuffers: AsyncSequence {
+      typealias Element = ByteBuffer
+      
+      struct AsyncIterator: AsyncIteratorProtocol {
+        
+        mutating func next() async throws -> ByteBuffer? {
+          if case .uninitialized(let task) = state {
+            state = .iterating(try await task.result.get().makeAsyncIterator())
+          }
+          guard case .iterating(var byteBuffers) = state else {
+            fatalError()
+          }
+          defer { state = .iterating(byteBuffers) }
+          return try await byteBuffers.next()
+        }
+        
+        fileprivate init(_ operation: @escaping @Sendable () async throws -> _ByteBuffers) {
+          state = .uninitialized(Task(operation: operation))
+        }
+        
+        private enum State {
+          case uninitialized(Task<_ByteBuffers, Error>)
+          case iterating(_ByteBuffers.AsyncIterator)
+        }
+        private var state: State
+      }
+      func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator { [channel, preprocessor] in
+          try await _ByteBuffers(channel: channel, preprocessor: preprocessor)
+        }
+      }
+      
+      fileprivate let channel: Channel
+      fileprivate let preprocessor: ChannelHandler?
+    }
+    
+    /**
+     Iterates over the `ByteBuffer`s yeilded by `Handler`
+     
+     This is a private type which relies on the `ChannelHandler` being attached when this type is initialized. An unfortunate consequence of this is that the initializer is `async` so returning sequences based on this type would need to be `async` as well, resulting in unfortunate spellings like `for await line in await input.lines { … }`. To make this a bit nicer, we only expose a wrapper type (`ByteBuffers`) which rolls the asynchronous initialization into the first call to `next`.
+     */
+    fileprivate struct _ByteBuffers: AsyncSequence, @unchecked Sendable {
+      
+      init(channel: Channel, preprocessor: ChannelHandler?) async throws {
+        self.channel = channel
+        
+        #if DEBUG
+        /// Check that we didn't already register a handler
+        let existingHandler = try! await channel.pipeline
+          .handler(type: InboundAsyncSequence<ByteBuffer>.self)
+          .map { Optional.some($0) }
+          .recover { _ in nil }
+          .get()
+        assert(existingHandler == nil)
+        #endif
+        
+        sequence = InboundAsyncSequence<ByteBuffer>()
+        try! await channel.pipeline
+          .addHandlers([
+            preprocessor,
+            sequence,
+          ].compactMap { $0 })
+          .get()
+      }
+      
       typealias Element = ByteBuffer
       
       struct AsyncIterator: AsyncIteratorProtocol {
@@ -167,46 +318,23 @@ struct BuiltinHandle {
       fileprivate let sequence: InboundAsyncSequence<ByteBuffer>
     }
     
-    __consuming private func byteBuffers(preprocessor: ChannelHandler?) async -> ByteBuffers {
-      #if DEBUG
-      /// Check that we didn't already register a handler
-      let existingHandler = try! await channel.pipeline
-        .handler(type: InboundAsyncSequence<ByteBuffer>.self)
-        .map { Optional.some($0) }
-        .recover { _ in nil }
-        .get()
-      assert(existingHandler == nil)
-      #endif
-      
-      let sequence = InboundAsyncSequence<ByteBuffer>()
-      try! await channel.pipeline
-        .addHandlers([
-          preprocessor,
-          sequence,
-        ].compactMap { $0 })
-        .get()
-      return ByteBuffers(channel: channel, sequence: sequence)
-    }
-    
     let channel: Channel
   }
   
   /**
    A type which can be used to write to a shell command's standard output or standard error
    */
-  struct OutputStream {
+  public struct Output {
     
-    let channel: Channel
-    
-    func withTextOutputStream(_ body: (inout TextOutputStream) -> Void) async throws {
+    public func withTextOutputStream(_ body: (inout TextOutputStream) -> Void) async throws {
       var stream = TextOutputStream(channel: channel)
       body(&stream)
       channel.flush()
       try await stream.lastFuture?.get()
     }
     
-    struct TextOutputStream: Swift.TextOutputStream {
-      mutating func write(_ string: String) {
+    public struct TextOutputStream: Swift.TextOutputStream {
+      public mutating func write(_ string: String) {
         let buffer = channel.allocator.buffer(string: string)
         /// This future should implicitly be fulfilled after any previous future
         lastFuture = channel.write(NIOAny(buffer))
@@ -214,72 +342,88 @@ struct BuiltinHandle {
       fileprivate let channel: Channel
       fileprivate var lastFuture: EventLoopFuture<Void>?
     }
+    
+    let channel: Channel
   }
 
 }
 
 // MARK: - Context
 
-struct BuiltinEngine {
+extension Builtin {
   
-  fileprivate let context: Context = .shared
-  
-  fileprivate final class Context: Sendable {
+  /**
+   Context in which to execut builtin operations
+   */
+  struct Context {
+    
     init() {
-      eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-      threadPool = NIOThreadPool(numberOfThreads: 1)
-      nonBlockingFileIO = NonBlockingFileIO(threadPool: threadPool)
-    }
-    deinit {
-      var errors: [Error] = []
-      do {
-        try eventLoopGroup.syncShutdownGracefully()
-      } catch {
-        errors.append(error)
-      }
-      do {
-        try threadPool.syncShutdownGracefully()
-      } catch {
-        errors.append(error)
-      }
-      if !errors.isEmpty {
-        Self.report(errors)
-      }
-    }
-    
-    let threadPool: NIOThreadPool
-    let eventLoopGroup: EventLoopGroup
-    let nonBlockingFileIO: NonBlockingFileIO
-    
-    static var shared: Context {
-      queue.sync {
-        if let context = _shared {
-          return context
+      storage = Self.queue.sync {
+        if let storage = Self.sharedStorage {
+          return storage
         } else {
-          let context = Context()
-          _shared = context
-          return context
+          let storage = Storage()
+          Self.sharedStorage = storage
+          return storage
         }
       }
     }
-    private static weak var _shared: Context?
     
-    private static func report(_ unhandledErrors: [Error]) {
-      assertionFailure()
-      queue.sync {
-        self.unhandledErrors.append(contentsOf: unhandledErrors)
+    /**
+     The returned value is only guaranteed to be valid if the owning `Context` struct is valid (ensuring we maintain a strong reference to `Storage`). As a result, this is only safe to use in the body of the `Shell.builtin` function, since the `Shell` maintains this strong reference.
+     */
+    fileprivate var fileIO: NonBlockingFileIO {
+      storage.fileIO
+    }
+    
+    /**
+     The returned value is only guaranteed to be valid if the owning `Context` struct is valid (ensuring we maintain a strong reference to `Storage`). As a result, this is only safe to use in the body of the `Shell.builtin` function, since the `Shell` maintains this strong reference.
+     */
+    fileprivate var eventLoopGroup: EventLoopGroup {
+      storage.eventLoopGroup
+    }
+    
+    private let storage: Storage
+    
+    private final class Storage: Sendable {
+      let threadPool: NIOThreadPool
+      let eventLoopGroup: MultiThreadedEventLoopGroup
+      let fileIO: NonBlockingFileIO
+      
+      init() {
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        threadPool = NIOThreadPool(numberOfThreads: 1)
+        fileIO = NonBlockingFileIO(threadPool: threadPool)
+      }
+      deinit {
+        var errors: [Error] = []
+        do {
+          try eventLoopGroup.syncShutdownGracefully()
+        } catch {
+          errors.append(error)
+        }
+        do {
+          try threadPool.syncShutdownGracefully()
+        } catch {
+          errors.append(error)
+        }
+        if !errors.isEmpty {
+          assertionFailure()
+          Context.queue.sync {
+            Context.unhandledErrors.append(contentsOf: errors)
+          }
+        }
       }
     }
-    private(set) static var unhandledErrors: [Error] = []
-    
     private static let queue = DispatchQueue(label: #fileID)
+    private static weak var sharedStorage: Storage?
+    private(set) static var unhandledErrors: [Error] = []
   }
-    
 }
 
 // MARK: - Support
 
-extension SystemPackage.FileDescriptor {
+private extension SystemPackage.FileDescriptor {
   
   /**
    Duplicates the file descriptor and attempts to transfer ownership using the provided block. If ownership transfer fails (throws an error), closes the created duplicate.
