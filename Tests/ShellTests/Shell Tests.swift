@@ -16,7 +16,15 @@ final class ShellTests: XCTestCase {
         try await shell.execute(
           echo,
           arguments: [
-            "ABC"
+            "ABC",
+          ])
+      },
+      { shell in
+        try await shell.execute(
+          echo,
+          arguments: [
+            "-n",
+            "ABC",
           ])
       },
       { shell in
@@ -30,6 +38,13 @@ final class ShellTests: XCTestCase {
         try await shell.builtin { handle in
           try await handle.output.withTextOutputStream { stream in
             stream.write("ABC")
+          }
+        }
+      },
+      { shell in
+        try await shell.builtin { handle in
+          try await handle.output.withTextOutputStream { stream in
+            stream.write("ABC\n")
           }
         }
       }
