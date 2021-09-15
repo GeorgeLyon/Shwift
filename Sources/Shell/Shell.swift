@@ -1,7 +1,31 @@
 
 import SystemPackage
 
+/**
+ We consider `FilePath` to be part of our public API
+ */
+@_exported import struct SystemPackage.FilePath
+
 public struct Shell: Sendable {
+  
+  /**
+   Creates a `Shell`.
+   */
+  public init(
+    directory: FilePath,
+    environment: Environment,
+    input: Input,
+    output: Output,
+    error: Output,
+    childProcessManager: ChildProcessManager = ChildProcessManager(terminateManagedProcessesOnInterrupt: true))
+  {
+    self.directory = directory
+    self.environment = environment
+    self.input = input
+    self.output = output
+    self.error = error
+    self.childProcessManager = childProcessManager
+  }
   
   public func subshell(
     pushing path: FilePath? = nil,

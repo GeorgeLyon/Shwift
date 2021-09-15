@@ -33,9 +33,9 @@ let package = Package(
       ]),
     
     .testTarget(
-      name: "ShwiftTests",
+      name: "ShellTests",
       dependencies: [
-        "Script",
+        "Shell",
       ]),
   ]
 )

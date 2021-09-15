@@ -1,5 +1,6 @@
 
 import Shell
+import Foundation
 
 public protocol Script {
   
@@ -25,8 +26,11 @@ extension Shell {
      We need to create a new shell every time so that we pick up the correct working directory
      */
     Shell(
+      directory: FilePath(FileManager.default.currentDirectoryPath),
       environment: .process,
-      childProcessManager: )
+      input: .standardInput,
+      output: .standardOutput,
+      error: .standardError)
   }
   
   static var current: Shell {
