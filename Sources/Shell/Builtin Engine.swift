@@ -171,7 +171,9 @@ extension Builtin {
   public struct Input {
     
     /**
-     Process this input line by line
+     Process this input as a sequence of lines.
+     
+     - note: If there is a newline at the end of a file, this last empty line will not be present in the sequence (though if the final line has text it will still be returned).
      */
     public var lines: Strings {
       __consuming get {
