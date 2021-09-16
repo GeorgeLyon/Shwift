@@ -8,18 +8,27 @@ final class ShellTests: XCTestCase {
   func testMatrix() async throws {
     let cat = try shell.executable(named: "cat")!
     let echo = try shell.executable(named: "echo")!
+    let sed = try shell.executable(named: "sed")!
     let abcPath = Bundle.module.path(forResource: "ABC", ofType: "txt")!
-    typealias Operation = @Sendable (Shell) async throws -> Void
+    
+    struct Operation {
+      init(line: Int = #line, body: @escaping @Sendable (Shell) async throws -> Void) {
+        self.line = line
+        self.body = body
+      }
+      let line: Int
+      let body: @Sendable (Shell) async throws -> Void
+    }
     
     let sources: [Operation] = [
-      { shell in
+      Operation { shell in
         try await shell.execute(
           echo,
           arguments: [
             "ABC",
           ])
       },
-      { shell in
+      Operation { shell in
         try await shell.execute(
           echo,
           arguments: [
@@ -27,43 +36,80 @@ final class ShellTests: XCTestCase {
             "ABC",
           ])
       },
-      { shell in
+      Operation { shell in
         try await shell.execute(
           cat,
           arguments: [
             abcPath
           ])
       },
-      { shell in
-        try await shell.builtin { handle in
-          try await handle.output.withTextOutputStream { stream in
-            stream.write("ABC")
-          }
-        }
+      Operation { shell in
+        try await shell.read(from: FilePath(abcPath))
       },
-      { shell in
+      Operation { shell in
         try await shell.builtin { handle in
           try await handle.output.withTextOutputStream { stream in
-            stream.write("ABC\n")
+            print("ABC", to: &stream)
           }
         }
       }
     ]
     
-    for operation in sources {
-      let lines: [String] = try await shell.pipe(operation) { shell in
+    let destinations: [Operation] = [
+      Operation { shell in
+        for _ in 0..<2 {
+          try await shell.execute(
+            echo,
+            arguments: [
+              "-n",
+              "ABC",
+            ])
+        }
+      },
+      Operation { shell in
+        try await shell.execute(
+          sed,
+          arguments: [
+            #"s/\(.*\)/\1\1/"#,
+          ])
+      },
+      Operation { shell in
         try await shell.builtin { handle in
-          var lines: [String] = []
           for try await line in handle.input.lines {
-            lines.append(line)
+            try await handle.output.withTextOutputStream { stream in
+              print("\(line)\(line)", to: &stream)
+            }
           }
-          return lines
         }
       }
-      print(lines)
+    ]
+    
+    let matrix = sources.flatMap { source in
+      destinations.map { destination in
+        (source, destination)
+      }
+    }
+    
+    for (source, destination) in matrix {
+      do {
+        let test = { @Sendable (shell: Shell) in
+          try await shell.pipe(source.body, to: destination.body)
+        }
+        let lines: [String] = try await shell.pipe(test) { shell in
+          try await shell.builtin { handle in
+            var lines: [String] = []
+            for try await line in handle.input.lines {
+              lines.append(line)
+            }
+            return lines
+          }
+        }
+        XCTAssertEqual(lines, ["ABCABC"], "Failed piping \(source.line) to \(destination.line)")
+      } catch {
+        XCTFail("Failed piping \(source.line) to \(destination.line) due to \(error)")
+      }
     }
   }
-  
   
   private let shell = Shell(
     directory: FilePath(FileManager.default.currentDirectoryPath),

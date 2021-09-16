@@ -397,6 +397,7 @@ extension Builtin {
       init() {
         eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         threadPool = NIOThreadPool(numberOfThreads: 1)
+        threadPool.start()
         fileIO = NonBlockingFileIO(threadPool: threadPool)
       }
       deinit {
