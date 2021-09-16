@@ -48,17 +48,17 @@ public final class ChildProcessManager: InterruptHandler, @unchecked Sendable {
     process.standardInput = input.handle
     process.standardOutput = output.handle
     process.standardError = error.handle
-    queue.sync {
-      managedProcesses[id] = process
-    }
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      process.terminationHandler = { _ in
-        continuation.resume()
-      }
-      do {
-        try process.run()
-      } catch {
-        continuation.resume(throwing: error)
+      queue.sync {
+        managedProcesses[id] = process
+        process.terminationHandler = { _ in
+          continuation.resume()
+        }
+        do {
+          try process.run()
+        } catch {
+          continuation.resume(throwing: error)
+        }
       }
     }
     queue.sync {
