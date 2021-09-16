@@ -403,28 +403,12 @@ extension Builtin {
         fileIO = NonBlockingFileIO(threadPool: threadPool)
       }
       deinit {
-        var errors: [Error] = []
-        do {
-          try eventLoopGroup.syncShutdownGracefully()
-        } catch {
-          errors.append(error)
-        }
-        do {
-          try threadPool.syncShutdownGracefully()
-        } catch {
-          errors.append(error)
-        }
-        if !errors.isEmpty {
-          assertionFailure()
-          Context.queue.sync {
-            Context.unhandledErrors.append(contentsOf: errors)
-          }
-        }
+        try! eventLoopGroup.syncShutdownGracefully()
+        try! threadPool.syncShutdownGracefully()
       }
     }
     private static let queue = DispatchQueue(label: #fileID)
     private static weak var sharedStorage: Storage?
-    private(set) static var unhandledErrors: [Error] = []
   }
 }
 
