@@ -11,12 +11,23 @@ extension Shell {
     return try await pipe.input.closeAfter {
       let destinationShell = subshell(input: Shell.Input(pipe.input))
       async let destinationResult = try await destination(destinationShell)
-      try await pipe.output.closeAfter {
-        let sourceShell = subshell(output: Shell.Output(pipe.output))
-        async let sourceResult: Void = try await source(sourceShell)
-        try await sourceResult
+      
+      let sourceResult: Result<Void, Error>
+      do {
+        try await pipe.output.closeAfter {
+          let sourceShell = subshell(output: Shell.Output(pipe.output))
+          async let sourceResult: Void = try await source(sourceShell)
+          try await sourceResult
+        }
+        sourceResult = .success(())
+      } catch {
+        sourceResult = .failure(error)
       }
-      return try await destinationResult
+      
+      /// We allow the destination operation to terminate, but throw if the source destination failed
+      let returnValue = try await destinationResult
+      try sourceResult.get()
+      return returnValue
     }
   }
   
