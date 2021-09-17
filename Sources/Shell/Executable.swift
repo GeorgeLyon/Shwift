@@ -3,7 +3,7 @@ import SystemPackage
 
 extension Shell {
   
-  public struct Executable {
+  public struct Executable: @unchecked Sendable {
     let path: FilePath
   }
   

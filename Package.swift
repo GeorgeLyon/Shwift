@@ -13,6 +13,7 @@ let package = Package(
       targets: ["Script"]),
   ],
   dependencies: [
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-system", from: "0.0.1"),
     .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
     .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.0.0"),
@@ -21,6 +22,7 @@ let package = Package(
     .target(
       name: "Shell",
       dependencies: [
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "NIO", package: "swift-nio"),
         .product(name: "_NIOConcurrency", package: "swift-nio"),
@@ -30,6 +32,12 @@ let package = Package(
       name: "Script",
       dependencies: [
         "Shell",
+      ]),
+    
+    .executableTarget(
+      name: "Sample",
+      dependencies: [
+        "Script",
       ]),
     
     .testTarget(
