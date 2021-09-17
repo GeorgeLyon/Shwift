@@ -13,6 +13,17 @@ public func |<T> (
   }
 }
 
+@discardableResult
+@_disfavoredOverload
+public func |<T> (
+  source: Shell._Invocation<Void>,
+  destination: Shell._Invocation<T>
+) async throws -> Shell._Invocation<T> {
+  Shell._Invocation {
+    try await source | destination
+  }
+}
+
 extension Shell {
   
   /**
