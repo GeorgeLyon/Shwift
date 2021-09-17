@@ -25,4 +25,16 @@ public extension Shell.Executable {
   func callAsFunction(arguments: [String?]) async throws {
     try await Shell.current.execute(self, arguments: arguments)
   }
+  @_disfavoredOverload
+  func callAsFunction(_ arguments: String?...) async throws -> Shell._Invocation<Void> {
+    Shell._Invocation {
+      try await callAsFunction(arguments: arguments)
+    }
+  }
+  @_disfavoredOverload
+  func callAsFunction(arguments: [String?]) async throws -> Shell._Invocation<Void> {
+    Shell._Invocation {
+      try await Shell.current.execute(self, arguments: arguments)
+    }
+  }
 }
