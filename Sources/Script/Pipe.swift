@@ -29,7 +29,7 @@ extension Shell {
   /**
    We use this type to work around https://bugs.swift.org/browse/SR-14517
    
-   Instead of having `|` take async autoclosure arguments, we have it take this type, and provide disfavored overloads which create `_Invocation` for interesting APIs. Users should never interact with this type directly.
+   Instead of having `|` take async autoclosure arguments, we have it take this type, and provide disfavored overloads which create `_Invocation` for interesting APIs. Some API doesn't really make sense outside of a pipe expression, and we only provide the `_Invocation` variant for such API.
    */
   public struct _Invocation<T> {
     let body: () async throws -> T

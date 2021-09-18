@@ -93,7 +93,7 @@ extension Shell {
   /**
    Push the contents of a file to this shell's `output`
    */
-  func read(from filePath: FilePath) async throws {
+  public func read(from filePath: FilePath) async throws {
     try await builtin { handle in
       let eventLoop = builtinContext.eventLoopGroup.next()
       let (fileHandle, region) = try await builtinContext.fileIO.openFile(
@@ -113,7 +113,7 @@ extension Shell {
   /**
    Write this shell's `input` to the specified file
    */
-  func write(
+  public func write(
     to filePath: FilePath,
     openOptions: SystemPackage.FileDescriptor.OpenOptions = []) async throws {
     try await builtin { handle in

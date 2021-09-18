@@ -3,56 +3,45 @@ import Shell
 
 public extension Script {
   
-  func map(transform: @escaping (String) async throws -> String) -> Shell._Invocation<Void> {
-    compactMap(transform: transform)
-  }
-  
-  func compactMap(transform: @escaping (String) async throws -> String?) -> Shell._Invocation<Void> {
+  /**
+   Prints a set of items to the specified shell output
+   
+   The API is meant to mirror `Swift.print`.
+   */
+  func echo(
+    _ items: Any...,
+    separator: String = " ",
+    terminator: String = "\n",
+    to outputType: Shell.OutputType = .output
+  ) -> Shell._Invocation<Void> {
     Shell._Invocation {
       try await Shell.current.builtin { handle in
-        for try await line in handle.input.lines {
-          if let line = try await transform(line) {
-            try await handle.output.withTextOutputStream { stream in
-              print(line, to: &stream)
-            }
-          }
+        let target: Builtin.Output
+        switch outputType {
+        case .output:
+          target = handle.output
+        case .error:
+          target = handle.error
+        }
+        try await target.withTextOutputStream { stream in
+          items
+            .flatMap { [String(describing: $0), separator] }
+            .dropLast()
+            .forEach { stream.write($0) }
+          stream.write(terminator)
         }
       }
     }
   }
   
-  func collect() -> Shell._Invocation<[String]> {
-    reduce(into: []) { $0.append($1) }
+}
+
+public extension Shell {
+  /**
+   A type used for selecting a particular flavor of output
+   */
+  enum OutputType {
+    case output
+    case error
   }
-  
-  func reduce<T>(
-    into initialResult: T,
-    _ updateAccumulatingResult: @escaping (inout T, String) async throws -> Void
-  ) -> Shell._Invocation<T> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
-        var result = initialResult
-        for try await line in handle.input.lines {
-          try await updateAccumulatingResult(&result, line)
-        }
-        return result
-      }
-    }
-  }
-  
-  func reduce<T>(
-    _ initialResult: T,
-    _ nextPartialResult: @escaping (T, String) async throws -> T
-  ) -> Shell._Invocation<T> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
-        var result = initialResult
-        for try await line in handle.input.lines {
-          result = try await nextPartialResult(result, line)
-        }
-        return result
-      }
-    }
-  }
-  
 }
