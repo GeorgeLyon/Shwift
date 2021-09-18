@@ -9,8 +9,8 @@ struct Sample: Script {
     let echo = try executable(named: "echo")
     let sed = try executable(named: "sed")
     
-    print(try await echo("Foo") | sed(#"s/\(.*\)/\1\n\1/"#) | cat() | collect())
+    print(try await echo("Foo") | sed(#"s/\(.*\)/\1\n\1/"#) | cat() | capture())
     
-    print(try await echo("Foo") | map { "\($0)\n\($0)" } | collect())
+    print(try await echo("Foo") | map { "\($0)\n\($0)" } | capture())
   }
 }

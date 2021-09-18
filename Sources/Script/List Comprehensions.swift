@@ -5,9 +5,7 @@ public extension Script {
   
   func capture() -> Shell._Invocation<String> {
     Shell._Invocation {
-      try await Shell.current.builtin { handle in
-        try await handle.input.lines.reduce(into: "", { $0.append($1) })
-      }
+      try await collect().body().joined(separator: "\n")
     }
   }
   
