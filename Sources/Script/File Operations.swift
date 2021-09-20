@@ -5,19 +5,21 @@ import Foundation
 public extension Script {
   
   func read(from filePath: FilePath) -> Shell._Invocation<Void> {
-    Shell._Invocation {
-      try await Shell.current.read(from: filePath)
+    Shell._Invocation { shell in
+      try await shell.read(from: filePath)
     }
   }
   
   func write(to filePath: FilePath) -> Shell._Invocation<Void> {
-    Shell._Invocation {
-      try await Shell.current.write(to: filePath)
+    Shell._Invocation { shell in
+      try await shell.write(to: filePath)
     }
   }
   
-  func item(at path: FilePath) -> Shell.Item {
-    Shell.Item(path: Shell.current.directory.pushing(path))
+  func item(at path: FilePath) async -> Shell.Item {
+    await Shell.withCurrent { shell in
+      Shell.Item(path: shell.directory.pushing(path))
+    }
   }
   
 }

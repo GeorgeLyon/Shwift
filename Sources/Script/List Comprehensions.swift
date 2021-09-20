@@ -4,7 +4,7 @@ import Shell
 public extension Script {
   
   func capture() -> Shell._Invocation<String> {
-    Shell._Invocation {
+    Shell._Invocation { _ in
       try await collect().body().joined(separator: "\n")
     }
   }
@@ -14,8 +14,8 @@ public extension Script {
   }
   
   func compactMap(transform: @escaping (String) async throws -> String?) -> Shell._Invocation<Void> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
+    Shell._Invocation { shell in
+      try await shell.builtin { handle in
         for try await line in handle.input.lines.compactMap(transform) {
           try await handle.output.withTextOutputStream { stream in
             print(line, to: &stream)
@@ -33,8 +33,8 @@ public extension Script {
     into initialResult: T,
     _ updateAccumulatingResult: @escaping (inout T, String) async throws -> Void
   ) -> Shell._Invocation<T> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
+    Shell._Invocation { shell in
+      try await shell.builtin { handle in
         try await handle.input.lines.reduce(into: initialResult, updateAccumulatingResult)
       }
     }
@@ -44,8 +44,8 @@ public extension Script {
     _ initialResult: T,
     _ nextPartialResult: @escaping (T, String) async throws -> T
   ) -> Shell._Invocation<T> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
+    Shell._Invocation { shell in
+      try await shell.builtin { handle in
         try await handle.input.lines.reduce(initialResult, nextPartialResult)
       }
     }

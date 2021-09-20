@@ -14,8 +14,8 @@ public extension Script {
     terminator: String = "\n",
     to outputType: Shell.OutputType = .output
   ) -> Shell._Invocation<Void> {
-    Shell._Invocation {
-      try await Shell.current.builtin { handle in
+    Shell._Invocation { shell in
+      try await shell.builtin { handle in
         let target: Builtin.Output
         switch outputType {
         case .output:

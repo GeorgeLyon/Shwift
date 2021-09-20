@@ -10,14 +10,11 @@ import Foundation
 // MARK: - Script
 
 public protocol Script: ParsableCommand {
-  var rootShell: Shell { get }
+  func withRootShell<T>(operation: (Shell) async throws -> T) async rethrows -> T
   func run() async throws
 }
 
 extension Script {
-  
-  public var shell: Shell { .current }
-  
   public func subshell<T>(
     pushing path: FilePath? = nil,
     environment: Shell.Environment? = nil,
@@ -27,17 +24,24 @@ extension Script {
     error: Shell.Output? = nil,
     operation: () async throws -> T
   ) async rethrows -> T {
-    let subshell = shell.subshell(
-      pushing: path,
-      environment: environment,
-      updatingEnvironmentValues: newEnvironmentValues,
-      input: input,
-      output: output,
-      error: error)
-    return try await Shell.withSubshell(subshell, operation: operation)
+    try await Shell.withCurrent { shell in
+      let subshell = shell.subshell(
+        pushing: path,
+        environment: environment,
+        updatingEnvironmentValues: newEnvironmentValues,
+        input: input,
+        output: output,
+        error: error)
+      return try await Shell.withSubshell(subshell, operation: operation)
+    }
   }
   
-  public var rootShell: Shell { .process }
+  public func withRootShell<T>(operation: (Shell) throws -> T) rethrows -> T {
+    try operation(.process)
+  }
+  public func withRootShell<T>(operation: (Shell) async throws -> T) async rethrows -> T {
+    try await operation(.process)
+  }
 }
 
 extension Script {
@@ -91,11 +95,12 @@ extension Shell {
       error: .standardError)
   }
   
-  static var current: Shell {
-    /**
-     We want to call `rootShell` every time we access it to potentially pick up process working directory changes.
-     */
-    taskLocal ?? hostScript.rootShell
+  public static func withCurrent<T>(operation: (Shell) async throws -> T) async rethrows -> T {
+    if let taskLocal = taskLocal {
+      return try await operation(taskLocal)
+    } else {
+      return try await hostScript.withRootShell(operation: operation)
+    }
   }
   
   static func withSubshell<T>(
