@@ -75,7 +75,7 @@ extension Shell {
       #if canImport(Darwin)
       try throwIfPosixError(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)))
       #else
-      #error("Unsupported Platform")
+      #warning("POSIX_SPAWN_CLOEXEC_DEFAULT is not supported on this platform")
       #endif
     
       try throwIfPosixError(shell.workingDirectory.withCString {
@@ -97,7 +97,7 @@ extension Shell {
         try throwIfPosixError(
           posix_spawn_file_actions_adddup2(&actions, controlPipe.writeEnd.rawValue, controlFileDescriptor))
         
-        let channel = try await Output.nullDevice.withFileDescriptor { nullOutput in
+        let channel = try await shell.nioContext.withNullOutputDevice { nullOutput in
           try await NIOPipeBootstrap(group: shell.nioContext.eventLoopGroup)
             .channelInitializer { channel in
               final class ControlChannelHandler: ChannelInboundHandler {
@@ -134,36 +134,47 @@ extension Shell {
           try! throwIfPosixError(kill(processID, SIGTERM))
         },
         operation: {
-          try await controlChannel.closeFuture.get()
+           try await controlChannel.closeFuture.get()
           
-          /// Perform a non-blocking wait
+          /// Some key paths are different on Linux and macOS
+          #if canImport(Darwin)
+          let pid = \siginfo_t.si_pid
+          let sigchldInfo = \siginfo_t.self
+          let killingSignal = \siginfo_t.si_status
+          #elseif canImport(Glibc)
+          let pid = \siginfo_t._sifields._sigchld.si_pid
+          let sigchldInfo = \siginfo_t._sifields._sigchld
+          let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
+          #endif
+          
           var info = siginfo_t()
           /**
            We use a process ID of `0` to detect the case when the child is not in a waitable state.
            Since we use the control channel to detect termination, this _shouldn't_ happen (unless the child decides to call `close(3)` for some reason).
            */
-          info.si_pid = 0
-          try throwIfPosixError(waitid(P_PID, id_t(processID), &info, WEXITED))
-          guard info.si_pid != 0 else {
+          info[keyPath: pid] = 0
+          try throwIfPosixError(waitid(P_PID, id_t(processID), &info, WEXITED | WNOHANG))
+          guard info[keyPath: pid] != 0 else {
             throw Error.controlChannelClosedPriorToTermination
           }
-          
-          switch info.si_code {
-          case CLD_EXITED:
-            guard info.si_status == 0 else {
+
+          switch Int(info.si_code) {
+          case Int(CLD_EXITED):
+            let status = info[keyPath: sigchldInfo].si_status
+            guard status == 0 else {
               /**
                A nonzero termination status might be interpreted by the caller, so cast the status to `Int`
                */
-              throw Executable.Error.nonzeroTerminationStatus(Int(info.si_status))
+              throw Executable.Error.nonzeroTerminationStatus(Int(status))
             }
             /// The process completed successfully
-          case CLD_KILLED:
+          case Int(CLD_KILLED):
             guard !Task.isCancelled else {
               throw CancellationError()
             }
-            throw Error.uncaughtSignal(info.si_status, coreDumped: false)
-          case CLD_DUMPED:
-            throw Error.uncaughtSignal(info.si_status, coreDumped: true)
+            throw Error.uncaughtSignal(info[keyPath: killingSignal], coreDumped: false)
+          case Int(CLD_DUMPED):
+            throw Error.uncaughtSignal(info[keyPath: killingSignal], coreDumped: true)
           default:
             fatalError()
           }

@@ -43,9 +43,9 @@ extension Shell {
   func invoke<T>(
     operation: (State) async throws -> T
   ) async throws -> T {
-    try await standardInput.withFileDescriptor { standardInput in
-      try await standardOutput.withFileDescriptor { standardOutput in
-        try await standardError.withFileDescriptor { standardError in
+    try await withFileDescriptor(for: standardInput) { standardInput in
+      try await withFileDescriptor(for: standardOutput) { standardOutput in
+        try await withFileDescriptor(for: standardError) { standardError in
           let state = State(
             workingDirectory: workingDirectory,
             environment: environment,
@@ -62,8 +62,8 @@ extension Shell {
 
 // MARK: - NIO Context
 
-final class NIOContext {
-  let eventLoopGroup: EventLoopGroup
+actor NIOContext {
+  nonisolated let eventLoopGroup: EventLoopGroup
   
   fileprivate init() {
     eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -73,13 +73,54 @@ final class NIOContext {
       precondition(error == nil)
     }
   }
-}
-
-// MARK: - Support
-
-private final class ControlChannelHandler: ChannelInboundHandler {
-  typealias InboundIn = ByteBuffer
-  func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-    fatalError()
+  
+  /**
+   - note: In actuality, the null device is implemented as a pipe which discards anything written to it's write end. The problem with using something like `FileDescriptor.open("/dev/null", .writeOnly)` is that NIO on Linux uses `epoll` to read from file descriptors, and `epoll` is incompatible with `/dev/null`.
+   */
+  func withNullOutputDevice<T>(
+    _ operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    let device: NullOutputDevice
+    if let existing = nullOutputDevice {
+      device = existing
+    } else {
+      device = try await NullOutputDevice(group: eventLoopGroup)
+      nullOutputDevice = device
+    }
+    /// `device` is guaranteed to be valid for the duration of `operation` because `self` holds a strong reference to it.
+    return try await operation(device.fileDescriptor)
   }
+
+  private final class NullOutputDevice {
+    let fileDescriptor: FileDescriptor
+    let channel: Channel
+    init(group: EventLoopGroup) async throws {
+      (fileDescriptor, channel) = try await FileDescriptor.withPipe { pipe in
+        let channel = try await NIOPipeBootstrap(group: group)
+          .channelInitializer { channel in
+            final class Handler: ChannelInboundHandler {
+              typealias InboundIn = ByteBuffer
+              func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+                /// Ignore
+              }
+              func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+                print("EVENT: \(event)")
+              }
+            }
+            return channel.pipeline.addHandler(Handler())
+          }
+          .duplicating(
+            inputDescriptor: pipe.readEnd,
+            /**
+              We use the write end of the pipe because we need to specify _something_ as the channel output. This file descriptor should never be written to.
+              */
+            outputDescriptor: pipe.writeEnd)
+        return (try pipe.writeEnd.duplicate(), channel)
+      }
+    }
+    deinit {
+      try! fileDescriptor.close()
+    }
+  }
+  private var nullOutputDevice: NullOutputDevice?
 }

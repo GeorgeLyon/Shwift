@@ -25,6 +25,9 @@ let package = Package(
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "NIO", package: "swift-nio"),
         .product(name: "_NIOConcurrency", package: "swift-nio"),
+      ],
+      cSettings: [
+        .define("_GNU_SOURCE", .when(platforms: [.linux]))
       ]),
 //    .testTarget(
 //      name: "ShwiftTests",
