@@ -25,10 +25,12 @@ let package = Package(
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "NIO", package: "swift-nio"),
         .product(name: "_NIOConcurrency", package: "swift-nio"),
+        .target(name: "CLinuxSupport", condition: .when(platforms: [.linux])),
       ],
       cSettings: [
         .define("_GNU_SOURCE", .when(platforms: [.linux]))
       ]),
+    .target(name: "CLinuxSupport")
 //    .testTarget(
 //      name: "ShwiftTests",
 //      dependencies: ["Shwift"]),
