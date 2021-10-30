@@ -31,7 +31,7 @@ public struct Shell {
 
 extension Shell {
   
-  struct State {
+  struct InternalRepresentation {
     let workingDirectory: FilePath
     let environment: [String: String]
     let standardInput: FileDescriptor
@@ -41,19 +41,19 @@ extension Shell {
   }
   
   func invoke<T>(
-    operation: (State) async throws -> T
+    operation: (InternalRepresentation) async throws -> T
   ) async throws -> T {
     try await withFileDescriptor(for: standardInput) { standardInput in
       try await withFileDescriptor(for: standardOutput) { standardOutput in
         try await withFileDescriptor(for: standardError) { standardError in
-          let state = State(
+          let shell = InternalRepresentation(
             workingDirectory: workingDirectory,
             environment: environment,
             standardInput: standardInput,
             standardOutput: standardOutput,
             standardError: standardError,
             nioContext: nioContext)
-          return try await operation(state)
+          return try await operation(shell)
         }
       }
     }

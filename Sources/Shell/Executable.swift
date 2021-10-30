@@ -36,7 +36,7 @@ extension Shell {
     
     func execute(
       arguments: [String],
-      in shell: Shell.State
+      in shell: Shell.InternalRepresentation
     ) async throws {
       
       let cArguments = ([path.string] + arguments).map { $0.withCString(strdup) }
