@@ -111,9 +111,9 @@ struct Process {
     }
 
     #if os(macOS)
-    mutating func closeFileDescriptorsByDefault() {
+    mutating func setCloseFileDescriptorsByDefault() throws {
       try throwIfPosixError(
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)))
+        posix_spawnattr_setflags(&c, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)))
     }
     #endif
 
@@ -164,6 +164,7 @@ struct Process {
     return Process(id: id)
   }
 
+  #if canImport(Glibc)
   /**
    Clones this process and executes the provided operation.
    */
@@ -189,7 +190,12 @@ struct Process {
     }
     return Process(id: id)
   }
+  #endif
 
+  func terminate() throws {
+    try throwIfPosixError(kill(id, SIGTERM))
+  }
+  
   /**
    Waits for the process to complete. If `block` is set to `false` (the default) and the process has not completed, this function will return `nil`.
    */
@@ -276,7 +282,7 @@ private func throwIfPosixError(
   column: UInt = #column
 ) throws {
   guard returnValue == 0 else {
-    throw Executable.Error
+    throw Error
       .posixError(file: file, line: line, column: column, returnValue: returnValue)
   }
 }
