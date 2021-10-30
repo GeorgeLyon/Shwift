@@ -137,14 +137,12 @@ struct Process {
         free(argument)
       }
     }
-  
     let cEnvironment = environment.map { strdup("\($0)=\($1)") }
     defer {
       for value in cEnvironment {
         free(value)
       }
     }
-    
     var id: pid_t = .zero
     try throwIfPosixError(
       executablePath.withPlatformString { executablePath in
@@ -222,22 +220,23 @@ struct Process {
       return nil
     }
 
+    struct UncaughtSignal: Error {
+      let signal: CInt
+      let coreDumped: Bool
+    }
     switch Int(info.si_code) {
     case Int(CLD_EXITED):
       return info[keyPath: sigchldInfo].si_status
     case Int(CLD_KILLED):
-      guard !Task.isCancelled else {
-        throw CancellationError()
-      }
-      throw Error.uncaughtSignal(info[keyPath: killingSignal], coreDumped: false)
+      throw UncaughtSignal(signal: info[keyPath: killingSignal], coreDumped: false)
     case Int(CLD_DUMPED):
-      throw Error.uncaughtSignal(info[keyPath: killingSignal], coreDumped: true)
+      throw UncaughtSignal(signal: info[keyPath: killingSignal], coreDumped: true)
     default:
       fatalError()
     }
   }
 
-  private let id: pid_t
+  let id: pid_t
 }
 
 // MARK: - Memory Sharing
@@ -245,10 +244,10 @@ struct Process {
 /**
  Allows mutating a single shared value across any processes spawned during `operation`. THIS IS EXTREMELY UNSAFE, as _only_ the bits of the value will be shared; any references in the value will _only_ exist in the process that created them. For example, setting this value to a `String` is unsafe, since a long enough string will be allocated on the heap, which is not shared between processes.
  */
-func withVeryUnsafeInterprocess<T>(
+func withVeryUnsafeInterprocess<T, U>(
   _ initialValue: T,
-  operation: (inout T) async throws -> Void
-) async throws -> T {
+  operation: (inout T) async throws -> U
+) async throws -> U {
   let size = MemoryLayout<T>.size
   let pointer = mmap(
     nil,
@@ -264,15 +263,19 @@ func withVeryUnsafeInterprocess<T>(
   }
   let valuePointer = pointer.bindMemory(to: T.self, capacity: 1)
   valuePointer.initialize(to: initialValue)
-  try await(operation(&valuePointer.pointee))
-  return valuePointer.pointee
+  return try await(operation(&valuePointer.pointee))
 }
 
 // MARK: - Support
 
-private enum Error: Swift.Error {
-  case posixError(file: StaticString, line: UInt, column: UInt, returnValue: Int32)
-  case uncaughtSignal(Int32, coreDumped: Bool)
+/**
+ - warning: This type may be transferred over shared memory and thus cannot contain any heap-allocated values.
+ */
+struct PosixError: Swift.Error {
+  let file: StaticString
+  let line: UInt
+  let column: UInt
+  let returnValue: Int32
 }
 
 private func throwIfPosixError(
@@ -282,7 +285,6 @@ private func throwIfPosixError(
   column: UInt = #column
 ) throws {
   guard returnValue == 0 else {
-    throw Error
-      .posixError(file: file, line: line, column: column, returnValue: returnValue)
+    throw PosixError(file: file, line: line, column: column, returnValue: returnValue)
   }
 }
