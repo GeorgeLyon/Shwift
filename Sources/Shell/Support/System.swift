@@ -168,20 +168,32 @@ struct Process {
    */
   static func clone(
     operation: () -> CInt,
-    stackSize: Int = 4096
+    stackSize: Int = 65536
   ) -> Self {
     let stack = UnsafeMutableBufferPointer<CChar>.allocate(capacity: stackSize)
-    defer { stack.deallocate() }
-    let id = withoutActuallyEscaping(operation) { operation in
-      withUnsafePointer(to: operation) { operation in
+    stack.initialize(repeating: 0)
+    print("\(#filePath):\(#line)")
+    defer {
+      print("\(#filePath):\(#line)")
+      stack.deallocate()
+    }
+    let top = stack.baseAddress! + stack.count
+    print("""
+      STACK: \(stack.baseAddress!) \(stack.count) \(top)
+      """)
+    let id: pid_t = withoutActuallyEscaping(operation) { operation in
+      print("\(#filePath):\(#line)")
+      return withUnsafePointer(to: operation) { operation in
         shwift_clone(
           { pointer in
+            print("\(#filePath):\(#line):GEORGE")
             let operation = pointer!
               .bindMemory(to: (() -> CInt).self, capacity: 1)
               .pointee
+            print("\(#filePath):\(#line)")
             return operation()
           },
-          stack.baseAddress! + stack.count,
+          top,
           SIGCHLD,
           UnsafeMutableRawPointer(mutating: operation))
       }
@@ -215,7 +227,7 @@ struct Process {
      Since we use the control channel to detect termination, this _shouldn't_ happen (unless the child decides to call `close(3)` for some reason).
      */
     info[keyPath: pid] = 0
-    try throwIfPosixError(waitid(P_PID, id_t(id), &info, WEXITED | (block ? WNOHANG : 0)))
+    try throwIfPosixError(waitid(P_PID, id_t(id), &info, WEXITED | (block ? 0 : WNOHANG)))
     guard info[keyPath: pid] != 0 else {
       return nil
     }
@@ -226,10 +238,13 @@ struct Process {
     }
     switch Int(info.si_code) {
     case Int(CLD_EXITED):
+      print("\(#fileID):\(#line)")
       return info[keyPath: sigchldInfo].si_status
     case Int(CLD_KILLED):
+      print("\(#fileID):\(#line):\(info[keyPath: killingSignal])")
       throw UncaughtSignal(signal: info[keyPath: killingSignal], coreDumped: false)
     case Int(CLD_DUMPED):
+      print("\(#fileID):\(#line)")
       throw UncaughtSignal(signal: info[keyPath: killingSignal], coreDumped: true)
     default:
       fatalError()
@@ -286,5 +301,35 @@ private func throwIfPosixError(
 ) throws {
   guard returnValue == 0 else {
     throw PosixError(file: file, line: line, column: column, returnValue: returnValue)
+  }
+}
+
+public func foo(_ shell: Shell) async throws {
+  // print("\(#filePath):\(#line)")
+  try await shell.invoke { shell in
+    // print("\(#filePath):\(#line)")
+    let value: Int = try await withVeryUnsafeInterprocess(0) { shared in
+      // print("\(#filePath):\(#line)")
+      let monitor = try await FileDescriptorMonitor(in: shell)
+      // print("\(#filePath):\(#line)")
+      let process = Process.clone {
+        // print("\(#filePath):\(#line)")
+        sleep(1)
+        // print("\(#filePath):\(#line)")
+        shared = 3
+        // print("\(#filePath):\(#line)")
+        return 0
+      }
+      // print("\(#filePath):\(#line)")
+      try! monitor.descriptor.close()
+      // print("\(#filePath):\(#line)")
+      try! await monitor.future.get()
+      print("\(#filePath):\(#line)")
+      print(try process.wait(block: false) as Any)
+      print("\(#filePath):\(#line)")
+      let result = shared
+      return result
+    }
+    print(value)
   }
 }

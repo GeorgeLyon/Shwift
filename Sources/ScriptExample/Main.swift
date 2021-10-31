@@ -52,8 +52,10 @@ struct Script {
     let echo = Executable(path: "/usr/bin/echo")
     #endif
 
-    for i in 0..<100 {
-      try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
-    }
+    try await foo(shell)
+    return
+    // for i in 0..<100 {
+    //   try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+    // }
   }
 }

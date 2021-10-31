@@ -67,11 +67,21 @@ extension Shell {
          */
         let process: Process
         do {
-          let monitor = try await FileDescriptorMonitor(in: shell)
+          print("\(#fileID):\(#line):\(path)")
           do {
             process = try await withVeryUnsafeInterprocess(Result<pid_t, PosixError>?.none) { sharedResult in
+              print("\(#fileID):\(#line):\(path)")
+              let monitor = try await FileDescriptorMonitor(in: shell)
+
+              let test = Process.clone {
+                print("GEORGE!")
+                return 0
+              }
+              print(try test.wait(block: true) as Any)
+
               let helper = Process.clone {
                 do {
+                  print("\(#fileID):\(#line):\(path)")
                   /// Manually close all file descriptors we don't want to explicitly pass to the child
                   let exclude: Set = [
                     STDIN_FILENO, 
@@ -80,8 +90,10 @@ extension Shell {
                     controlFileDescriptor.rawValue,
                   ]
                   let directory = opendir("/proc/self/fd")!
+                  print("\(#fileID):\(#line):\(path)")
                   defer { closedir(directory) }
                   while let entry = readdir(directory) {
+                    print("\(#fileID):\(#line):\(path)")
                     let name = withUnsafeBytes(of: entry.pointee.d_name) { cName in
                       String(
                         decoding: cName.prefix(while: { $0 != 0 }), 
@@ -90,18 +102,22 @@ extension Shell {
                     guard let descriptor = CInt(name), !exclude.contains(descriptor) else {
                       continue
                     }
+                    print("\(#fileID):\(#line):\(path):closing \(descriptor)")
                     try actions.addClose(FileDescriptor(rawValue: descriptor))
                   }
 
+                  print("\(#fileID):\(#line):\(path)")
                   let process = try Process.spawn(
                     executablePath: path,
                     actions: actions, 
                     attributes: attributes, 
                     arguments: [path.string] + arguments, 
                     environment: shell.environment.map { $0 })
+                  print("\(#fileID):\(#line):\(path)")
                   sharedResult = .success(process.id)
                   return 0
                 } catch let error as PosixError {
+                  print("\(#fileID):\(#line):\(path)")
                   sharedResult = .failure(error)
                   return -1
                 } catch {
@@ -109,9 +125,13 @@ extension Shell {
                   return -2
                 }
               }
+              print("\(#fileID):\(#line):\(path)")
               try! monitor.descriptor.close()
+              print("\(#fileID):\(#line):\(path)")
               try! await monitor.future.get()
+              print("\(#fileID):\(#line):\(path)")
               let returnValue = try helper.wait()!
+              print("\(#fileID):\(#line):\(path)")
               switch (returnValue, sharedResult) {
               case (0, .success(let id)):
                 return Process(id: id)
