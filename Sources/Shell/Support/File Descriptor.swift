@@ -1,6 +1,10 @@
 
 import SystemPackage
 
+#if canImport(Glibc)
+import Glibc
+#endif
+
 /// Disambiguate between `NIO` and `SystemPackage`
 typealias FileDescriptor = SystemPackage.FileDescriptor
 
@@ -16,6 +20,54 @@ extension FileDescriptor {
       }
     }
   }
+  
+  #if canImport(Glibc)
+  /**
+   - returns: An array of currently open file descriptors
+   - warning: This method is not thread safe and might block. Also, this method uses heuris
+   */
+  static var openFileDescriptors: [FileDescriptor] {
+    get throws {
+      let directoryFileDescriptor = try Self.open("/proc/self/fd", .readOnly, options: .directory)
+      let directory = fdopendir(directoryFileDescriptor.rawValue)!
+      defer { 
+        let returnValue = closedir(directory)
+        precondition(returnValue == 0)
+      }
+      var openFileDescriptors: [FileDescriptor] = []
+      while true {
+        /// Get next entry name
+        let name: String
+        do {
+          errno = 0
+          guard let entry = readdir(directory) else {
+            break
+          }
+          precondition(errno == 0)
+
+          name = withUnsafeBytes(of: entry.pointee.d_name) { cName in
+            String(
+              decoding: cName.prefix(while: { $0 != 0 }), 
+              as: Unicode.UTF8.self)
+          }
+        }
+
+        guard !name.allSatisfy({ $0 == "." }) else {
+          continue
+        }
+
+        guard let fileDescriptor = CInt(name).map(FileDescriptor.init) else {
+          fatalError()
+        }
+        guard fileDescriptor != directoryFileDescriptor else {
+          continue
+        }
+        openFileDescriptors.append(fileDescriptor)
+      }
+      return openFileDescriptors
+    }
+  }
+  #endif
   
   func closeAfter<T>(
     _ operation: () async throws -> T
