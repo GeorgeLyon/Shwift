@@ -23,7 +23,23 @@ public struct Shell {
     self.standardError = standardError
     self.nioContext = NIOContext()
   }
-  
+
+  init(
+    workingDirectory: FilePath,
+    environment: [String: String],
+    standardInput: Input,
+    standardOutput: Output,
+    standardError: Output,
+    nioContext: NIOContext)
+  {
+    self.workingDirectory = workingDirectory
+    self.environment = environment
+    self.standardInput = standardInput
+    self.standardOutput = standardOutput
+    self.standardError = standardError
+    self.nioContext = nioContext
+  }
+
   let nioContext: NIOContext
 }
 
@@ -102,9 +118,6 @@ actor NIOContext {
               typealias InboundIn = ByteBuffer
               func channelRead(context: ChannelHandlerContext, data: NIOAny) {
                 /// Ignore
-              }
-              func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-                print("EVENT: \(event)")
               }
             }
             return channel.pipeline.addHandler(Handler())

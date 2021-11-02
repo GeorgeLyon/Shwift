@@ -36,7 +36,6 @@ extension FileDescriptor {
       }
       var openFileDescriptors: [FileDescriptor] = []
       while true {
-        /// Get next entry name
         let name: String
         do {
           errno = 0
@@ -46,7 +45,7 @@ extension FileDescriptor {
           precondition(errno == 0)
 
           name = withUnsafeBytes(of: entry.pointee.d_name) { cName in
-            String(
+            return String(
               decoding: cName.prefix(while: { $0 != 0 }), 
               as: Unicode.UTF8.self)
           }

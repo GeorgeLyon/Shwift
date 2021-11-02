@@ -75,8 +75,10 @@ enum Process {
     #elseif canImport(Glibc)
     try await withVeryUnsafeShared(SpawnError.self) { sharedError in
       do {
-        try await shell.monitorProcessUsingFileDescriptor { monitor in
-          clone {
+        try await shell.monitorProcessUsingFileDescriptor(name: executablePath.lastComponent!.string) { monitor in
+          let id = clone {
+            print("\(#filePath):\(#line) - \(executablePath.lastComponent!.string)")
+
             /**
             Helper functions for reporting errors encountered in the cloned process
             */
@@ -89,7 +91,6 @@ enum Process {
               do {
                 return try operation()
               } catch {
-                print(error)
                 sharedError = SpawnError(
                   file: file, 
                   line: line, 
@@ -149,6 +150,7 @@ enum Process {
             })
             fatalError()
           }
+          return id
         }
       } catch {
         /// `sharedError` should supercede any other thrown errors
@@ -172,6 +174,7 @@ private extension Shell.InternalRepresentation {
    Creates a file descriptor which is valid during `operation`, then waits for that file descriptor and any duplicates to close (including duplicates created as the result of spawning a new process).
    */
   func monitorProcessUsingFileDescriptor(
+    name: String,
     _ operation: (FileDescriptor) async throws -> pid_t
   ) async throws {
     let (channel, processID) = try await FileDescriptor.withPipe { pipe -> (Channel, pid_t) in
@@ -192,9 +195,14 @@ private extension Shell.InternalRepresentation {
         precondition(returnValue == 0)
       }, 
       operation: {
+        print("\(#filePath):\(#line) - \(processID): \(name)")
         try await channel.closeFuture.get()
+        print("\(#filePath):\(#line) - \(processID): \(name)")
       })
-    try Process.wait(on: processID)
+    /**
+     Ideally, we would not block here, but it seems that monitored file descriptor closing and the process becoming waitable does not happen atomically. So, most of the time this call shouldn't block, but some of the time it can block momentarily while Linux process management catches up.
+     */
+    try Process.wait(on: processID, canBlock: true)
   }
 
   /**
@@ -221,7 +229,7 @@ extension Process {
   /**
    Waits on the process. This call is nonblocking and expects that the process represented by `processID` has already terminated
    */
-  fileprivate static func wait(on processID: pid_t) throws {
+  fileprivate static func wait(on processID: pid_t, canBlock: Bool) throws {
     /// Some key paths are different on Linux and macOS
     #if canImport(Darwin)
     let pid = \siginfo_t.si_pid
@@ -241,7 +249,7 @@ extension Process {
     info[keyPath: pid] = 0
     do {
       errno = 0
-      let returnValue = waitid(P_PID, id_t(processID), &info, WEXITED | WNOHANG)
+      let returnValue = waitid(P_PID, id_t(processID), &info, WEXITED | (canBlock ? 0 : WNOHANG))
       guard returnValue == 0 else {
         throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
       }
@@ -307,25 +315,30 @@ private extension Process {
     operation: () -> CInt,
     stackSize: Int = 65536
   ) -> pid_t {
-    let stack = UnsafeMutableBufferPointer<CChar>.allocate(capacity: stackSize)
-    stack.initialize(repeating: 0)
-    defer { stack.deallocate() }
-    let stackTop = stack.baseAddress! + stack.count
-    return withoutActuallyEscaping(operation) { operation in
-      return withUnsafePointer(to: operation) { operation in
-        shwift_clone(
-          { pointer in
-            let operation = pointer!
-              .bindMemory(to: (() -> CInt).self, capacity: 1)
-              .pointee
-            return operation()
-          },
-          stackTop,
-          SIGCHLD,
-          UnsafeMutableRawPointer(mutating: operation))
+    queue.sync {
+      let stack = UnsafeMutableBufferPointer<CChar>.allocate(capacity: stackSize)
+      stack.initialize(repeating: 0)
+      defer { stack.deallocate() }
+      let stackTop = stack.baseAddress! + stack.count
+      return withoutActuallyEscaping(operation) { operation in
+        return withUnsafePointer(to: operation) { operation in
+          shwift_clone(
+            { pointer in
+              let operation = pointer!
+                .bindMemory(to: (() -> CInt).self, capacity: 1)
+                .pointee
+              return operation()
+            },
+            stackTop,
+            SIGCHLD,
+            UnsafeMutableRawPointer(mutating: operation))
+        }
       }
     }
   }
 
 }
+
+import Foundation
+private let queue = DispatchQueue(label: #filePath)
 #endif

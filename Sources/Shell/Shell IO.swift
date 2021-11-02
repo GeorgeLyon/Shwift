@@ -9,10 +9,15 @@ extension Shell {
      An input roughly analogous to using the null device (`/dev/null`).
      */
     public static let nullDevice = Input(kind: .nullDevice)
+
+    static func unmanaged(_ fileDescriptor: FileDescriptor) -> Input {
+      Input(kind: .unmanaged(fileDescriptor))
+    }
     
     fileprivate enum Kind {
       case standardInput
       case nullDevice
+      case unmanaged(FileDescriptor)
     }
     fileprivate let kind: Kind
   }
@@ -24,11 +29,16 @@ extension Shell {
     public static let standardError = Output(kind: .standardError)
     
     public static let nullDevice = Output(kind: .nullDevice)
+
+    static func unmanaged(_ fileDescriptor: FileDescriptor) -> Output {
+      Output(kind: .unmanaged(fileDescriptor))
+    }
     
     fileprivate enum Kind {
       case standardOutput
       case standardError
       case nullDevice
+      case unmanaged(FileDescriptor)
     }
     fileprivate let kind: Kind
   }
@@ -54,6 +64,8 @@ extension Shell {
       return try await pipe.readEnd.closeAfter {
         try await operation(pipe.readEnd)
       }
+    case .unmanaged(let fileDescriptor):
+      return try await operation(fileDescriptor)
     }
   }
   
@@ -68,6 +80,8 @@ extension Shell {
       return try await operation(.standardError)
     case .nullDevice:
       return try await nioContext.withNullOutputDevice(operation)
+    case .unmanaged(let fileDescriptor):
+      return try await operation(fileDescriptor)
     }
   }
 }
