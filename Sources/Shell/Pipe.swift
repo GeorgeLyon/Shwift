@@ -10,28 +10,31 @@ extension Shell {
     let sed = Executable(path: "/usr/bin/sed")
     let head = Executable(path: "/usr/bin/head")
 
+
     let pipe = try FileDescriptor.pipe()
     
-    try await invoke { shell in
+
+    try await invoke { invocation in
+
       let sourceShell = Shell(
-        workingDirectory: shell.workingDirectory,
-        environment: shell.environment,
-        standardInput: .unmanaged(shell.standardInput),
+        workingDirectory: workingDirectory,
+        environment: environment,
+        standardInput: .unmanaged(invocation.standardInput),
         standardOutput: .unmanaged(pipe.writeEnd),
-        standardError: .unmanaged(shell.standardError),
-        nioContext: shell.nioContext)
+        standardError: .unmanaged(invocation.standardError),
+        nioContext: nioContext)
       let sourceTask = Task {
         try await sourceShell.execute(echo, arguments: ["\(value):", "Foo", "Bar"])
         try pipe.writeEnd.close()
       }
       
       let destinationShell = Shell(
-        workingDirectory: shell.workingDirectory,
-        environment: shell.environment,
+        workingDirectory: workingDirectory,
+        environment: environment,
         standardInput: .unmanaged(pipe.readEnd),
-        standardOutput: .unmanaged(shell.standardOutput),
-        standardError: .unmanaged(shell.standardError),
-        nioContext: shell.nioContext)
+        standardOutput: .unmanaged(invocation.standardOutput),
+        standardError: .unmanaged(invocation.standardError),
+        nioContext: nioContext)
       let destinationTask = Task {
         try await destinationShell.execute(sed, arguments: ["s/Bar/Baz/"])
         // try await destinationShell.execute(head, arguments: ["-c6"])
@@ -40,7 +43,8 @@ extension Shell {
 
       try await sourceTask.value
       try await destinationTask.value
-      print(String(repeating: "-", count: 40))
+      try await FileDescriptor.withPipe { print(String(repeating: "-", count: 40) + "\($0.readEnd.rawValue)") }
+      
     }
   }
 }
