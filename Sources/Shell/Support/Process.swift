@@ -21,6 +21,29 @@ extension Shell {
         invocation.standardOutput: .standardOutput,
         invocation.standardError: .standardError,
       ]
+
+      #if canImport(Darwin)
+      let process: Process?
+      do {
+        var attributes = try PosixSpawn.Attributes()
+        defer { try! attributes.destroy() }
+        try attributes.setFlags(.closeFileDescriptorsByDefault)
+        
+        var actions = try PosixSpawn.FileActions()
+        defer { try! actions.destroy() }
+        try actions.addChangeDirectory(to: workingDirectory)
+        for (source, target) in fileDescriptorMapping {
+          try actions.addDuplicate(source, as: target)
+        }
+        
+        process = Process(id: try PosixSpawn.spawn(
+          executable.path,
+          arguments: [executable.path.string] + arguments,
+          environment: environment,
+          fileActions: &actions,
+          attributes: &attributes))
+      }
+      #elseif canImport(Glibc)
       let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
         workingDirectory.withPlatformString { workingDirectory in
           let context = ShwiftSpawnContextCreate(
@@ -48,8 +71,8 @@ extension Shell {
       let process = try await waitForFileDescriptorToClose { monitor in
         Process(id: ShwiftSpawn(spawnContext, monitor.rawValue))
       }
+      #endif
       if let process = process {
-        print("\(#fileID):\(#line) (\(process.id): \(executable.path.lastComponent!.string))")
         invocation.cancellationHandler = {
           process.terminate()
         }
@@ -60,12 +83,19 @@ extension Shell {
           try process.wait(canBlock: true)
         }
       }
+
+      #if canImport(Glibc)
+      /// Process the outcome
       let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
-      if !outcome.isSuccess {
-        #warning("Should throw an error")
-        debugPrint(outcome.payload.failure);
-        fatalError()
+      guard outcome.isSuccess else {
+        let failure = outcome.payload.failure
+        throw Process.SpawnError(
+          file: String(cString: failure.file),
+          line: failure.line, 
+          returnValue: failure.returnValue, 
+          errorNumber: failure.error)
       }
+      #endif
     }
   }
 
@@ -95,6 +125,13 @@ struct Process {
 // MARK: Errors
 
 extension Process {
+
+  struct SpawnError: Swift.Error {
+    let file: String
+    let line: Int
+    let returnValue: Int
+    let errorNumber: CInt
+  }
 
   /**
    An error which caused a spawned process to terminate
@@ -194,7 +231,14 @@ extension Process {
     info[keyPath: pid] = 0
     do {
       errno = 0
-      let returnValue = waitid(P_PID, id_t(id), &info, WEXITED | __WALL | (canBlock ? 0 : WNOHANG))
+      var flags = WEXITED
+      #if canImport(Glibc)
+      flags |= __WALL
+      #endif
+      if !canBlock {
+        flags |= WNOHANG
+      }
+      let returnValue = waitid(P_PID, id_t(id), &info, flags)
       guard returnValue == 0 else {
         throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
       }

@@ -22,6 +22,7 @@
     ShwiftSpawnContext* ctx = ({ context; }); \
     ctx->isComplete = true; \
     ctx->outcome.isSuccess = false; \
+    ctx->outcome.payload.failure.file = __FILE__; \
     ctx->outcome.payload.failure.line = __LINE__; \
     ctx->outcome.payload.failure.returnValue = (intptr_t)({ failingReturnValue; }); \
     ctx->outcome.payload.failure.error = errno; \

@@ -2,6 +2,8 @@
 extension Shell {
 
   public func pipe(_ value: Int) async throws {
+    try await FileDescriptor.withPipe { print(String(repeating: "-", count: 40) + "\($0.readEnd.rawValue)") }
+    
     #if os(macOS)
     let echo = Executable(path: "/bin/echo")
     #elseif os(Linux)
@@ -43,7 +45,6 @@ extension Shell {
 
       try await sourceTask.value
       try await destinationTask.value
-      try await FileDescriptor.withPipe { print(String(repeating: "-", count: 40) + "\($0.readEnd.rawValue)") }
     }
   }
 }

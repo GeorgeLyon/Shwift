@@ -26,6 +26,9 @@ typedef struct {
 
     } success;
     struct {
+      /// Should always be this file
+      const char *file;
+
       /// The line at which a failure occured.
       intptr_t line;
 

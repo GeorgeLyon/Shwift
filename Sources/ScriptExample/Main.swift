@@ -56,7 +56,11 @@ struct Script {
     _ = readLine()
 
     for i in 0..<100000 {
-      try await shell.pipe(i)
+      do {
+        try await shell.pipe(i)
+      } catch {
+        print(error)
+      }
       // try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
     }
   }
