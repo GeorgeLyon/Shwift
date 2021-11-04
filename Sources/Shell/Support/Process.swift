@@ -72,11 +72,16 @@ extension Shell {
         Process(id: ShwiftSpawn(spawnContext, monitor.rawValue))
       }
       #endif
+
       if let process = process {
+        print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) launched.")
         invocation.cancellationHandler = {
           process.terminate()
         }
         invocation.cleanupTask = {
+          defer {
+            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed.")
+          }
           /**
            Theoretically we shouldn't need to block but there is a race condition where the file descriptor can be closed prior to the process becoming waitable. In the future, we can catch `monitorClosedPriorToProcessTermination` and use a non-blocking fallback (like polling).
            */
@@ -278,6 +283,7 @@ private extension Shell {
     (channel, outcome) = try await FileDescriptor.withPipe { pipe in
       let channel = try await nioContext.withNullOutputDevice { nullOutput in
         try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
+          .channelOption(ChannelOptions.autoRead, value: false)
           .duplicating(
             inputDescriptor: pipe.readEnd,
             outputDescriptor: nullOutput)

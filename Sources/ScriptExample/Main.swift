@@ -2,40 +2,7 @@
 import Shell
 import class Foundation.FileManager
 
-import Foundation
 import SystemPackage
-import NIO
-import _NIOConcurrency
-
-// @main
-// struct Script {
-//  static func main() async throws {
-//    let pipe = try FileDescriptor.pipe()
-//    let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-
-//    final class Handler: ChannelInboundHandler {
-//      typealias InboundIn = ByteBuffer
-//    }
-//    let channel = try await NIOPipeBootstrap(group: group)
-//     .channelInitializer { channel in
-//       channel.pipeline.addHandler(Handler())
-//     }
-//     .withPipes(
-//       inputDescriptor: pipe.writeEnd.rawValue, 
-//       outputDescriptor: pipe.readEnd.rawValue)
-//     .get()
-
-//     DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(1)) {
-//       print("\(#fileID):\(#line)")
-//       try! pipe.readEnd.close()
-//       print("\(#fileID):\(#line)")
-//     }
-    
-//     print("\(#fileID):\(#line)")
-//     try await channel.closeFuture.get()
-//     print("\(#fileID):\(#line)")
-//  }
-// }
 
 @main
 struct Script {
@@ -46,22 +13,65 @@ struct Script {
       standardInput: .nullDevice,
       standardOutput: .standardOutput,
       standardError: .standardError)
+    
     #if os(macOS)
     let echo = Executable(path: "/bin/echo")
+    let cat = Executable(path: "/bin/cat")
     #elseif os(Linux)
     let echo = Executable(path: "/usr/bin/echo")
+    let cat = Executable(path: "/usr/bin/cat")
     #endif
+    let sed = Executable(path: "/usr/bin/sed")
+    let xxd = Executable(path: "/usr/bin/xxd")
+    let head = Executable(path: "/usr/bin/head")
 
-    print("ProcessID: \(ProcessInfo.processInfo.processIdentifier)")
-    _ = readLine()
+    func printSeparator() {
+      let pipe = try! FileDescriptor.pipe()
+      defer { 
+        try! pipe.readEnd.close()
+        try! pipe.writeEnd.close()
+      }
+      print(String(repeating: "-", count: 40) + "(\(pipe.readEnd.rawValue))")
+    }
 
     for i in 0..<100000 {
+      printSeparator()
       do {
-        try await shell.pipe(i)
+        try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+
+        printSeparator()
+
+        try await shell.pipe(
+          .output,
+          of: { shell in
+            try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+          },
+          to: { shell in
+            try await shell.execute(sed, arguments: ["s/Bar/Baz/"])
+          })
+
+        printSeparator()
+        
+        try await shell.pipe(
+          .output,
+          of: { shell in
+            try await shell.execute(cat, arguments: ["/dev/urandom"])
+          },
+          to: { shell in
+            try await shell.pipe(
+              .output,
+              of: { shell in
+                try await shell.execute(xxd, arguments: [])
+              },
+              to: { shell in
+                try await shell.execute(head, arguments: ["-n2"])
+              })
+          })
+
+          printSeparator()
       } catch {
         print(error)
       }
-      // try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
     }
   }
 }
