@@ -55,6 +55,7 @@ extension Shell {
         }
       }
       if let process = process {
+        print("Process: \(process.id)")
         invocation.cancellationHandler = {
           process.terminate()
         }
@@ -91,7 +92,7 @@ struct Process {
     self.id = id
   }
 
-  private let id: pid_t
+  fileprivate let id: pid_t
 }
 
 // MARK: - Support

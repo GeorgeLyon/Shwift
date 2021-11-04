@@ -14,13 +14,15 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/// To debug with strace: strace -o /strace/p -ff .build/debug/ScriptExample
+
 #define _REPORT_FAILURE(outcome, failingReturnValue) \
   ({ \
     (outcome).isSuccess = false; \
     (outcome).payload.failure.line = __LINE__; \
     (outcome).payload.failure.returnValue = (intptr_t)({ failingReturnValue; }); \
     (outcome).payload.failure.error = errno; \
-    return 1; \
+    return -1; \
   })
 
 /// `ShwiftSpawnContext` == `ShwiftSpawnOutcome`
@@ -92,8 +94,11 @@ static int RunsInClone(ShwiftSpawnCloneArguments* cloneArguments) {
   /// Create a new mapping with temporary file descriptors which do not correspond to a target file descriptor.
   /// `mapping` never needs to be freed because we will be exiting or execing this process
   int fileDescriptorMappingsCount = cloneArguments->parameters.fileDescriptorMappingsCount;
-  ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings = 
-    calloc(fileDescriptorMappingsCount, sizeof(ShwiftSpawnFileDescriptorMapping));
+
+  /// We can't even allocate anything because we might have cloned while the heap is locked...
+  ShwiftSpawnFileDescriptorMapping fileDescriptorMappings[fileDescriptorMappingsCount];
+  // ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings = 
+    // calloc(fileDescriptorMappingsCount, sizeof(ShwiftSpawnFileDescriptorMapping));
   for (int i = 0; i < fileDescriptorMappingsCount; i++) {
     while (true) {
       int source = cloneArguments->parameters.fileDescriptorMappings[i].source;
