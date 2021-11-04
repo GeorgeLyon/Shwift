@@ -14,105 +14,169 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/// To debug with strace: strace -o /strace/p -ff .build/debug/ScriptExample
-
-#define _REPORT_FAILURE(outcome, failingReturnValue) \
+/**
+ Code running in the cloned process is a pain to debug, but this mechanism at least lets us pull out some information about a failure if we run into one.
+ */
+#define _REPORT_FAILURE(context, failingReturnValue) \
   ({ \
-    (outcome).isSuccess = false; \
-    (outcome).payload.failure.line = __LINE__; \
-    (outcome).payload.failure.returnValue = (intptr_t)({ failingReturnValue; }); \
-    (outcome).payload.failure.error = errno; \
+    ShwiftSpawnContext* ctx = ({ context; }); \
+    ctx->isComplete = true; \
+    ctx->outcome.isSuccess = false; \
+    ctx->outcome.payload.failure.line = __LINE__; \
+    ctx->outcome.payload.failure.returnValue = (intptr_t)({ failingReturnValue; }); \
+    ctx->outcome.payload.failure.error = errno; \
     return -1; \
   })
 
-/// `ShwiftSpawnContext` == `ShwiftSpawnOutcome`
-ShwiftSpawnContext* ShwiftSpawnContextCreate() {
-  /**
-   `ShwiftSpawnContext`s are actualy regions of shared memory. Unfortunately, shared memory is inherited by _all_ child processes which spawn while the shared memory is mapped. This means it is very possible for a child process to inherit an unrelated `ShwiftSpawnContext`. While not ideal, we are OK with this as it is unlikely that a process will accidentally modify this value (mapping and allocating memory in the child process will not overlap this region) and since `ShwiftSpawnContext` is mainly informative and composed of simple integer data types there is little opportunity for mischief by malicious executables.
-   */
-  ShwiftSpawnOutcome *outcome = mmap(
-    NULL,
-    sizeof(ShwiftSpawnOutcome),
-    PROT_READ | PROT_WRITE,
-    MAP_ANONYMOUS | MAP_SHARED,
-    -1,
-    0);
-  if (outcome == MAP_FAILED) {
-    return NULL;
-  }
-  void *memsetResult = memset((void*)outcome, 0, sizeof(ShwiftSpawnOutcome));
-  assert(memsetResult == outcome);
-  return (ShwiftSpawnContext*)outcome;
-}
+#define ASSERT_NONNULL(expression) \
+  ({ \
+    typeof(expression) value = ({ expression; }); \
+    assert(value != NULL); \
+    value; \
+  })
 
-/// `ShwiftSpawnContext` == `ShwiftSpawnOutcome`
-bool ShwiftSpawnContextDestroy(ShwiftSpawnContext* context) {
-  return munmap(context, sizeof(ShwiftSpawnOutcome)) == 0;
-}
-
-/// `ShwiftSpawnContext` == `ShwiftSpawnOutcome`
-ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext* context) {
-  /// The extra `volatile` may be unnecessary, but shared memory is scary so let's play it safe.
-  ShwiftSpawnOutcome volatile* volatile outcome;
-  outcome = (typeof(outcome))context;
-  return *outcome;
-}
-
-typedef struct {
-  const char* executablePath;
-  char* const* arguments;
-  const char* workingDirectory;
-  char* const* environment;
-  int fileDescriptorMappingsCount;
-  const ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings;
-  int monitor;
-} ShwiftSpawnParameters;
-
-typedef struct {
-  ShwiftSpawnParameters parameters;
-
-  /// The extra `volatile` may be unnecessary, but shared memory is scary so let's play it safe.
-  ShwiftSpawnOutcome volatile* volatile outcome;
-} ShwiftSpawnCloneArguments;
+// MARK: - String Array
 
 /**
- We cannot implement this function in Swift because if `clone` occurs while the Swift runtime holds a lock on a different thread, that lock will never be released in the cloned process and may cause a deadlock.
+ A NULL-terminated array.
  */
-static int RunsInClone(ShwiftSpawnCloneArguments* cloneArguments) {
+typedef struct {
+  int capacity, count;
+  char **elements;
+} ShwiftSpawnStringArray;
+
+static void ShwiftSpawnStringArrayInit(ShwiftSpawnStringArray *array, int capacity) {
+  array->capacity = capacity;
+  array->count = 0;
+  /// Allocate an extra element for the NULL terminator
+  array->elements = ASSERT_NONNULL(calloc(capacity + 1, sizeof(char *)));
+}
+
+/**
+ **Copies** `element` into this array, `element` **must** be a NULL-terminated string.
+ */
+static void ShwiftSpawnStringArrayAppend(ShwiftSpawnStringArray* array, const char *element) {
+  assert(array->capacity >= array->count + 1);
+  array->elements[array->count] = ASSERT_NONNULL(strdup(element));
+  array->count += 1;
+}
+
+static void ShwiftSpawnStringArrayDestroy(ShwiftSpawnStringArray *array) {
+  for (int i = 0; i < array->count; i += 1) {
+    free(array->elements[i]);
+  }
+  free(array->elements);
+}
+
+// MARK: - Context
+
+typedef struct {
+  int source, target;
+} ShwiftSpawnFileDescriptorMapping;
+
+struct ShwiftSpawnContext {
+  char stack[65536];
+  char stackTop;
+
+  struct {
+    char* executablePath;
+    char* workingDirectory;
+    ShwiftSpawnStringArray arguments;
+    ShwiftSpawnStringArray environment;
+
+    struct {
+      int capacity, count;
+      ShwiftSpawnFileDescriptorMapping *elements;
+    } fileDescriptorMappings;
+
+    int monitor;
+  } parameters;
+
+  bool isComplete;
+  ShwiftSpawnOutcome outcome;
+};
+
+ShwiftSpawnContext* ShwiftSpawnContextCreate(
+  const char* executablePath,
+  const char* workingDirectory,
+  int argumentCapacity,
+  int environmentCapacity,
+  int fileDescriptorMappingsCapacity)
+{
+  ShwiftSpawnContext *context = ASSERT_NONNULL(calloc(1, sizeof(ShwiftSpawnContext)));
+  context->parameters.executablePath = ASSERT_NONNULL(strdup(executablePath));
+  context->parameters.workingDirectory = ASSERT_NONNULL(strdup(workingDirectory));
+  ShwiftSpawnStringArrayInit(&context->parameters.arguments, argumentCapacity);
+  ShwiftSpawnStringArrayInit(&context->parameters.environment, environmentCapacity);
+  context->parameters.fileDescriptorMappings.capacity = fileDescriptorMappingsCapacity;
+  context->parameters.fileDescriptorMappings.elements = ASSERT_NONNULL(calloc(fileDescriptorMappingsCapacity, sizeof(ShwiftSpawnFileDescriptorMapping)));
+  return context;
+}
+
+void ShwiftSpawnContextDestroy(ShwiftSpawnContext* context) {
+  free(context->parameters.executablePath);
+  free(context->parameters.workingDirectory);
+  ShwiftSpawnStringArrayDestroy(&context->parameters.arguments);
+  ShwiftSpawnStringArrayDestroy(&context->parameters.environment);
+  free(context->parameters.fileDescriptorMappings.elements);
+  free(context);
+}
+
+void ShwiftSpawnContextAddArgument(ShwiftSpawnContext* context, const char* argument) {
+  ShwiftSpawnStringArrayAppend(&context->parameters.arguments, argument);
+}
+
+void ShwiftSpawnContextAddEnvironmentEntry(ShwiftSpawnContext* context, const char* entry) {
+  ShwiftSpawnStringArrayAppend(&context->parameters.environment, entry);
+}
+
+void ShwiftSpawnContextAddFileDescriptorMapping(
+  ShwiftSpawnContext* context,
+  int source,
+  int target)
+{
+  int count = context->parameters.fileDescriptorMappings.count;
+  assert(context->parameters.fileDescriptorMappings.capacity >= count + 1);
+  context->parameters.fileDescriptorMappings.elements[count].source = source;
+  context->parameters.fileDescriptorMappings.elements[count].target = target;
+  context->parameters.fileDescriptorMappings.count += 1;
+}
+
+ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext* context) {
+  assert(context->isComplete);
+  return context->outcome;
+}
+
+/**
+ We cannot implement this function in Swift because if we do not specify `CLONE_VM` and `clone` occurs while the Swift runtime (or even just `malloc`) holds a lock on a different thread, that lock will never be released in the cloned process and may cause a deadlock. On the other hand, if we specify `CLONE_VM`, anything reference-counted passed to the clone will not have its reference count increased and thus may be freed prematurely.
+ */
+static int RunsInClone(ShwiftSpawnContext* context) {
   #define EXPECT(expression, expectation) \
     ({  \
       errno = 0; \
       typeof(expression) returnValue = ({ expression; }); \
       if (!((returnValue expectation) && (errno == 0))) { \
-        _REPORT_FAILURE(*cloneArguments->outcome, returnValue); \
+        _REPORT_FAILURE(context, returnValue); \
       } \
       returnValue; \
     })
   /// `== returnValue` creates a tautology, so only the errno check remains.
   #define CHECK_ERRNO(expression) EXPECT(expression, == returnValue)
 
-  /// Create a new mapping with temporary file descriptors which do not correspond to a target file descriptor.
-  /// `mapping` never needs to be freed because we will be exiting or execing this process
-  int fileDescriptorMappingsCount = cloneArguments->parameters.fileDescriptorMappingsCount;
-
-  /// We can't even allocate anything because we might have cloned while the heap is locked...
-  ShwiftSpawnFileDescriptorMapping fileDescriptorMappings[fileDescriptorMappingsCount];
-  // ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings = 
-    // calloc(fileDescriptorMappingsCount, sizeof(ShwiftSpawnFileDescriptorMapping));
-  for (int i = 0; i < fileDescriptorMappingsCount; i++) {
+  for (int i = 0; i < context->parameters.fileDescriptorMappings.count; i++) {
     while (true) {
-      int source = cloneArguments->parameters.fileDescriptorMappings[i].source;
-      int temporary = EXPECT(dup(source), != -1);
+      int source = context->parameters.fileDescriptorMappings.elements[i].source;
       bool isTarget = false;
-      for (int i = 0; i < fileDescriptorMappingsCount; i++) {
-        if (temporary == cloneArguments->parameters.fileDescriptorMappings[i].target) {
+      for (int i = 0; i < context->parameters.fileDescriptorMappings.count; i++) {
+        if (source == context->parameters.fileDescriptorMappings.elements[i].target) {
           isTarget = true;
           break;
         }
       }
-      if (!isTarget) {
-        fileDescriptorMappings[i].source = temporary;
-        fileDescriptorMappings[i].target = cloneArguments->parameters.fileDescriptorMappings[i].target; 
+      if (isTarget) {
+        context->parameters.fileDescriptorMappings.elements[i].source = EXPECT(dup(source), != -1);
+        continue;
+      } else {
         break;
       }
     }
@@ -141,15 +205,15 @@ static int RunsInClone(ShwiftSpawnCloneArguments* cloneArguments) {
     if (descriptor == directoryDescriptor) {
       continue;
     }
-    if (descriptor == cloneArguments->parameters.monitor) {
+    if (descriptor == context->parameters.monitor) {
       /// We'll close monitor using `fcntl` 
       continue;
     }
 
     /// Skip newly-created temporaries
     bool isTemporary = false;
-    for (int i = 0; i < fileDescriptorMappingsCount; i++) {
-      if (descriptor == fileDescriptorMappings[i].source) {
+    for (int i = 0; i < context->parameters.fileDescriptorMappings.count; i++) {
+      if (descriptor == context->parameters.fileDescriptorMappings.elements[i].source) {
         isTemporary = true;
         break;
       }
@@ -161,26 +225,29 @@ static int RunsInClone(ShwiftSpawnCloneArguments* cloneArguments) {
   }
   EXPECT(closedir(directory), == 0);
   /// Copy and close temporaries
-  for (int i = 0; i < fileDescriptorMappingsCount; i++) {
-    int source = fileDescriptorMappings[i].source;
-    int target = fileDescriptorMappings[i].target;
+  for (int i = 0; i < context->parameters.fileDescriptorMappings.count; i++) {
+    int source = context->parameters.fileDescriptorMappings.elements[i].source;
+    int target = context->parameters.fileDescriptorMappings.elements[i].target;
     EXPECT(dup2(source, target), == target);
     EXPECT(close(source), == 0);
   }
 
-  EXPECT(chdir(cloneArguments->parameters.workingDirectory), == 0);
+  EXPECT(chdir(context->parameters.workingDirectory), == 0);
 
   /**
    `monitor` will be closed if `execve` succeeds.
    */
-  EXPECT(fcntl(cloneArguments->parameters.monitor, F_SETFD, FD_CLOEXEC), == 0);
+  EXPECT(fcntl(context->parameters.monitor, F_SETFD, FD_CLOEXEC), == 0);
 
-  cloneArguments->outcome->payload.failure.line = 42;
+  /// If `execve` succeeds we need the context to be complete.
+  context->outcome.isSuccess = true;
+  context->isComplete = true;
+
   EXPECT(
     execve(
-      cloneArguments->parameters.executablePath, 
-      cloneArguments->parameters.arguments, 
-      cloneArguments->parameters.environment), 
+      context->parameters.executablePath, 
+      context->parameters.arguments.elements, 
+      context->parameters.environment.elements), 
     == 0);
 
   #undef EXPECT
@@ -189,42 +256,18 @@ static int RunsInClone(ShwiftSpawnCloneArguments* cloneArguments) {
 }
 
 pid_t ShwiftSpawn(
-  const char* executablePath,
-  char* const* arguments,
-  const char* workingDirectory,
-  char* const* environment,
-  int fileDescriptorMappingsCount,
-  const ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings,
   ShwiftSpawnContext* context,
   int monitor
 ) {
-  ShwiftSpawnCloneArguments cloneArguments = {
-    .parameters = {
-      .executablePath = executablePath,
-      .arguments = arguments,
-      .workingDirectory = workingDirectory,
-      .environment = environment,
-      .fileDescriptorMappingsCount = fileDescriptorMappingsCount,
-      .fileDescriptorMappings = fileDescriptorMappings,
-      .monitor = monitor,
-    },
-    .outcome = (ShwiftSpawnOutcome volatile* volatile)context,
-  };
-  cloneArguments.outcome->isSuccess = true;
-
-  const int STACK_SIZE = 65536;
-  char *stack = malloc(STACK_SIZE);
-  if (!stack) {
-    _REPORT_FAILURE(*cloneArguments.outcome, stack);
-  }
-
+  context->parameters.monitor = monitor;
+  context->isComplete = false;
+  
   /**
    - note: We don't specify SIGCHLD because we use other mechanisms to determine when the child process exits.
+   - note: We use `CLONE_VM`, because without that we might deadlock if the clone happens while a low-level lock has been taken (for instance, in `malloc`).
+   - note: `clone` duplicates `monitor` (and other file descriptors)
    */
-  pid_t processID = clone((int(*)(void*))RunsInClone, stack + STACK_SIZE, 0, &cloneArguments);
-
-  free(stack);
-  return processID;
+  return clone((int(*)(void*))RunsInClone, &(context->stackTop), CLONE_VM, context);
 }
 
 #endif

@@ -16,46 +16,40 @@ extension Shell {
 
   public func execute(_ executable: Executable, arguments: [String]) async throws {
     try await invoke { invocation in
-      let spawnContext = ShwiftSpawnContextCreate()!
-      defer { 
-        let success = ShwiftSpawnContextDestroy(spawnContext)
-        assert(success)
-      }
-      let process: Process? = try await waitForFileDescriptorToClose { monitor in
-        let cArguments = ([executable.path.string] + arguments).map { $0.duplicateCString() }
-        defer { cArguments.forEach { free($0) } }
-        let cEnvironment = environment.map { "\($0.key)=\($0.value)".duplicateCString() }
-        defer { cEnvironment.forEach { free($0) } }
-
-        var fileDescriptorMapping: [ShwiftSpawnFileDescriptorMapping] = [
-          (invocation.standardInput, STDIN_FILENO),
-          (invocation.standardOutput, STDOUT_FILENO),
-          (invocation.standardError, STDERR_FILENO),
-        ].map { ShwiftSpawnFileDescriptorMapping(source: $0.0.rawValue, target: $0.1) }
-
-        return executable.path.withPlatformString { executablePath in
-          (cArguments + [nil]).withUnsafeBufferPointer { arguments in
-            (cEnvironment + [nil]).withUnsafeBufferPointer { environment in
-              workingDirectory.withPlatformString { workingDirectory in 
-                fileDescriptorMapping.withUnsafeMutableBufferPointer { fileDescriptorMapping in
-                  Process(
-                    id: ShwiftSpawn(
-                      executablePath,
-                      arguments.baseAddress,
-                      workingDirectory,
-                      environment.baseAddress,
-                      Int32(fileDescriptorMapping.count),
-                      fileDescriptorMapping.baseAddress,
-                      spawnContext,
-                      monitor.rawValue))
-                }
-              }
-            }
-          }
+      let fileDescriptorMapping: KeyValuePairs<FileDescriptor, FileDescriptor> = [
+        invocation.standardInput: .standardInput,
+        invocation.standardOutput: .standardOutput,
+        invocation.standardError: .standardError,
+      ]
+      let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
+        workingDirectory.withPlatformString { workingDirectory in
+          let context = ShwiftSpawnContextCreate(
+            executablePath, 
+            workingDirectory,
+            Int32(arguments.count + 1),
+            Int32(environment.count),
+            Int32(fileDescriptorMapping.count))!
+          ShwiftSpawnContextAddArgument(context, executablePath)
+          return context
         }
       }
+      for (source, target) in fileDescriptorMapping {
+        ShwiftSpawnContextAddFileDescriptorMapping(spawnContext, source.rawValue, target.rawValue)
+      }
+      for argument in arguments {
+        argument.withCString { argument in
+          ShwiftSpawnContextAddArgument(spawnContext, argument)
+        }
+      }
+      for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
+        ShwiftSpawnContextAddEnvironmentEntry(spawnContext, "\(key)=\(value)")
+      }
+      defer { ShwiftSpawnContextDestroy(spawnContext) }
+      let process = try await waitForFileDescriptorToClose { monitor in
+        Process(id: ShwiftSpawn(spawnContext, monitor.rawValue))
+      }
       if let process = process {
-        print("Process: \(process.id)")
+        print("\(#fileID):\(#line) (\(process.id): \(executable.path.lastComponent!.string))")
         invocation.cancellationHandler = {
           process.terminate()
         }
@@ -69,6 +63,7 @@ extension Shell {
       let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
       if !outcome.isSuccess {
         #warning("Should throw an error")
+        debugPrint(outcome.payload.failure);
         fatalError()
       }
     }

@@ -13,13 +13,6 @@
 #include <sched.h>
 
 /**
- Represents the mapping of a file descriptor from `source` to `target`. `source` and `target` may be the same, indicating that a file descriptor should be passed to the child process as-is.
- */
-typedef struct {
-  int source, target;
-} ShwiftSpawnFileDescriptorMapping;
-
-/**
  A structure which gives more concrete information about the outcome of a call to `shwiftSpawn`. 
  */
 typedef struct {
@@ -48,19 +41,48 @@ typedef struct {
 typedef struct ShwiftSpawnContext ShwiftSpawnContext;
 
 /**
- Create a `ShwiftSpawnContext`. If non-NULL, the caller is responsible for eventually destroying the returned value via `ShwiftSpawnContextDestroy`.
+ Create a `ShwiftSpawnContext`. 
+ 
+ If non-NULL, the caller is responsible for eventually destroying the returned value via `ShwiftSpawnContextDestroy`.
  */
-ShwiftSpawnContext* ShwiftSpawnContextCreate();
+ShwiftSpawnContext* ShwiftSpawnContextCreate(
+  const char* executablePath,
+  const char* workingDirectory,
+  int argumentCapacity,
+  int environmentCapacity,
+  int fileDescriptorMappingsCapacity
+);
 
 /**
  Destroys a `ShwiftSpawnContext`.
-
- - Returns: `false` if something went wrong.
  */
-bool ShwiftSpawnContextDestroy(ShwiftSpawnContext*);
+void ShwiftSpawnContextDestroy(ShwiftSpawnContext*);
 
 /**
- Retrieves information about the outcome of `ShiwftSpawn` from a `ShwiftSpawnContext`. This should only be called once the context is "ready", which is only the case once `ShwiftSpawn` has closed the `monitor` file descriptor. Attepmting to access this prior to the context being "ready" results in undefined behavior.
+ Adds an argument to this context.
+
+ This function creates a copy of the argument, so the caller can safely free it once this function returns.
+ */
+void ShwiftSpawnContextAddArgument(ShwiftSpawnContext*, const char*);
+
+/**
+ Adds an environment entry, must be of the form "key=value".
+
+ This function creates a copy of the entry, so the caller can safely free it once this function returns.
+ */
+void ShwiftSpawnContextAddEnvironmentEntry(ShwiftSpawnContext*, const char*);
+
+/**
+ Specifies that this context should map the existing file descriptor specified by `source` should be mapped to `target` in the spawned process. 
+ This function duplicates `source`, so the caller can safely close it after this function returns.
+ */
+void ShwiftSpawnContextAddFileDescriptorMapping(
+  ShwiftSpawnContext*,
+  int source,
+  int target);
+
+/**
+ Retrieves information about the outcome of `ShiwftSpawn` from a `ShwiftSpawnContext`. This should only be called once the context is "complete", which is only the case once `ShwiftSpawn` has closed the `monitor` file descriptor. Attepmting to access this prior to the context being "complete" results in undefined behavior.
  */
 ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext*);
 
@@ -68,23 +90,11 @@ ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext*);
  Spawns a child process with the specified parameters.
 
  - Parameters:
-  - executablePath: The path to the executable
-  - arguments: A NULL-terminated list of arguments
-  - workingDirectory: The directory to launch the executable in
-  - environment: A NULL-terminated list of environment entires (should be of the form "key=value")
-  - fileDescriptorMappingsCount: The number of file descriptor mappings passed as `fileDescriptorMappings`
-  - fileDescriptorMappings: File descriptors to map into the child process. Only descriptors which are specified as the `target` of a mapping will be inherited by the child process, all other descriptors will be closed (similar to the behavior of POSIX_SPAWN_CLOEXEC_DEFAULT).
-  - context: A context which will be used to access concrete information about the outcome of `ShwiftSpawn`. A particular context should only be passed to `ShwiftSpawn` once. 
-  - monitor: An open file descriptor which will be closed once `context` is "ready" (see `ShwiftSpawnContextGetOutcome`).
+  - context: A context which will be used to access concrete information about the outcome of `ShwiftSpawn`.
+  - monitor: A file descriptor which will be duplicated and the duplicate will be closed when `context` is "complete".
 - Returns: The process ID of thes spawned process, or -1. If a process ID is returned, it is the caller's responsibility to eventually `wait` on the returned ID.
  */
 pid_t ShwiftSpawn(
-  const char* executablePath,
-  char* const* arguments,
-  const char* workingDirectory,
-  char* const* environment,
-  int fileDescriptorMappingsCount,
-  const ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings,
   ShwiftSpawnContext* context,
   int monitor
 );
