@@ -76,7 +76,7 @@ typedef struct {
 } ShwiftSpawnFileDescriptorMapping;
 
 struct ShwiftSpawnContext {
-  char stack[65536];
+  char stack[4096];
   char stackTop;
 
   struct {
