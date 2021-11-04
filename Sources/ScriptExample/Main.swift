@@ -52,7 +52,7 @@ struct Script {
     let echo = Executable(path: "/usr/bin/echo")
     #endif
 
-    for i in 0..<5000 {
+    for i in 0..<50000 {
       try await shell.pipe(i)
       // try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
     }

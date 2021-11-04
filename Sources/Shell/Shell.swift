@@ -146,21 +146,22 @@ extension Shell {
               return (future, invocation)
             }
           }
+          let outcome: T
           do {
             /// `closeFuture` can only be awaited on after `withPipe` returns, closing the temporary descriptors.
-            let outcome = try await withTaskCancellationHandler(
+            outcome = try await withTaskCancellationHandler(
               handler: {
                 unsafeInvocation.cancellationHandler?()
               }, 
               operation: {
                 try await future.get()
               })
-            try unsafeInvocation.cleanupTask?()
-            return outcome
           } catch {
             try unsafeInvocation.cleanupTask?()
             throw error
           }
+          try unsafeInvocation.cleanupTask?()
+          return outcome
         }
       }
     }

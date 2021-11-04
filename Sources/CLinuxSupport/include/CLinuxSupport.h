@@ -1,58 +1,94 @@
 
+#ifndef __CLINUXSUPPORT_H
+#define __CLINUXSUPPORT_H
+
 #ifdef __linux__
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <sched.h>
 
+/**
+ Represents the mapping of a file descriptor from `source` to `target`. `source` and `target` may be the same, indicating that a file descriptor should be passed to the child process as-is.
+ */
 typedef struct {
-  int32_t source, target;
-} file_descriptor_mapping_t;
-
-typedef struct {
-  /// Path of the executable to spawn
-  const char *executablePath;
-
-  /// `NULL`-terminated arguments array
-  char *const *arguments;
-
-  /// `NULL`-terminated environment variables array ("key=value")
-  char *const *environment;
-
-  /// Directory to run the program in
-  const char *directory;
-
-  /**
-   Mapping of file descriptors to pass to the child process. All descriptors that are not specified as targets here will be closed.
-   */
-  int32_t file_descriptor_mapping_count;
-  file_descriptor_mapping_t* file_descriptor_mapping;
-
-  /// This structure will be populated based on the results of `clone`
-  struct {
-    bool succeeded;
-
-    /// If we didn't succeed, the line in `shwift_spawn.c` that caused the failure
-    uint32_t line;
-
-    /// If applicable, the return value of the function causing `shwift_spawn` to terminate
-    uintptr_t return_value;
-
-    /// If applicable, the value of `errno` when `shwift_spawn` failed
-    int error;
-
-    /// Set to the process id of the launched proces
-    pid_t pid;
-  } outcome;
-} shwift_spawn_parameters_t;
+  int source, target;
+} ShwiftSpawnFileDescriptorMapping;
 
 /**
- A variant of `posix_spawn` which uses `clone`/`execve` to avoid race conditions when emulating `POSIX_SPAWN_CLOEXEC_DEFAULT`.
+ A structure which gives more concrete information about the outcome of a call to `shwiftSpawn`. 
+ */
+typedef struct {
+  /**
+   if `true`, the operation succeeded in launching the requested executable and the `success` property of `payload` is valid. If `false`, launching the requested executable failed and the `failure` property of `payload` contains information about the first failure that occured.
+   */
+  bool isSuccess;
+  
+  union {
+    struct {
+
+    } success;
+    struct {
+      /// The line at which a failure occured.
+      intptr_t line;
+
+      /// The return value of the function that caused the failure
+      intptr_t returnValue;
+
+      /// The value of `errno` after the failure was encountered
+      int error;
+    } failure;
+  } payload;
+} ShwiftSpawnOutcome;
+
+typedef struct ShwiftSpawnContext ShwiftSpawnContext;
+
+/**
+ Create a `ShwiftSpawnContext`. If non-NULL, the caller is responsible for eventually destroying the returned value via `ShwiftSpawnContextDestroy`.
+ */
+ShwiftSpawnContext* ShwiftSpawnContextCreate();
+
+/**
+ Destroys a `ShwiftSpawnContext`.
+
+ - Returns: `false` if something went wrong.
+ */
+bool ShwiftSpawnContextDestroy(ShwiftSpawnContext*);
+
+/**
+ Retrieves information about the outcome of `ShiwftSpawn` from a `ShwiftSpawnContext`. This should only be called once the context is "ready", which is only the case once `ShwiftSpawn` has closed the `monitor` file descriptor. Attepmting to access this prior to the context being "ready" results in undefined behavior.
+ */
+ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext*);
+
+/**
+ Spawns a child process with the specified parameters.
 
  - Parameters:
-  - parameters: Must be a pointer to **shared** memory. If `parameters->outcome.pid` is nonzero after this returns it must be waited on with the __WALL flag. 
+  - executablePath: The path to the executable
+  - arguments: A NULL-terminated list of arguments
+  - workingDirectory: The directory to launch the executable in
+  - environment: A NULL-terminated list of environment entires (should be of the form "key=value")
+  - fileDescriptorMappingsCount: The number of file descriptor mappings passed as `fileDescriptorMappings`
+  - fileDescriptorMappings: File descriptors to map into the child process. Only descriptors which are specified as the `target` of a mapping will be inherited by the child process, all other descriptors will be closed (similar to the behavior of POSIX_SPAWN_CLOEXEC_DEFAULT).
+  - context: A context which will be used to access concrete information about the outcome of `ShwiftSpawn`. A particular context should only be passed to `ShwiftSpawn` once. 
+  - monitor: An open file descriptor which will be closed once `context` is "ready" (see `ShwiftSpawnContextGetOutcome`).
+- Returns: The process ID of thes spawned process, or -1. If a process ID is returned, it is the caller's responsibility to eventually `wait` on the returned ID.
  */
-void shwift_spawn(shwift_spawn_parameters_t* parameters);
+pid_t ShwiftSpawn(
+  const char* executablePath,
+  char* const* arguments,
+  const char* workingDirectory,
+  char* const* environment,
+  int fileDescriptorMappingsCount,
+  const ShwiftSpawnFileDescriptorMapping* fileDescriptorMappings,
+  ShwiftSpawnContext* context,
+  int monitor
+);
 
-#endif
+#endif // __linux__
+
+#endif // __CLINUXSUPPORT_H

@@ -44,7 +44,6 @@ extension Shell {
       try await sourceTask.value
       try await destinationTask.value
       try await FileDescriptor.withPipe { print(String(repeating: "-", count: 40) + "\($0.readEnd.rawValue)") }
-      
     }
   }
 }

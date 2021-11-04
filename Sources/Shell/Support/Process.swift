@@ -16,48 +16,59 @@ extension Shell {
 
   public func execute(_ executable: Executable, arguments: [String]) async throws {
     try await invoke { invocation in
-      try await withVeryUnsafeShared(shwift_spawn_parameters_t()) { parameters in
+      let spawnContext = ShwiftSpawnContextCreate()!
+      defer { 
+        let success = ShwiftSpawnContextDestroy(spawnContext)
+        assert(success)
+      }
+      let process: Process? = try await waitForFileDescriptorToClose { monitor in
         let cArguments = ([executable.path.string] + arguments).map { $0.duplicateCString() }
         defer { cArguments.forEach { free($0) } }
         let cEnvironment = environment.map { "\($0.key)=\($0.value)".duplicateCString() }
         defer { cEnvironment.forEach { free($0) } }
 
-        var fileDescriptorMapping: [file_descriptor_mapping_t] = [
+        var fileDescriptorMapping: [ShwiftSpawnFileDescriptorMapping] = [
           (invocation.standardInput, STDIN_FILENO),
           (invocation.standardOutput, STDOUT_FILENO),
           (invocation.standardError, STDERR_FILENO),
-        ].map { file_descriptor_mapping_t(source: $0.0.rawValue, target: $0.1) }
+        ].map { ShwiftSpawnFileDescriptorMapping(source: $0.0.rawValue, target: $0.1) }
 
-        executable.path.withPlatformString { executablePath in
+        return executable.path.withPlatformString { executablePath in
           (cArguments + [nil]).withUnsafeBufferPointer { arguments in
             (cEnvironment + [nil]).withUnsafeBufferPointer { environment in
               workingDirectory.withPlatformString { workingDirectory in 
                 fileDescriptorMapping.withUnsafeMutableBufferPointer { fileDescriptorMapping in
-                  parameters.pointee.executablePath = executablePath
-                  parameters.pointee.arguments = arguments.baseAddress
-                  parameters.pointee.environment = environment.baseAddress
-                  parameters.pointee.directory = workingDirectory
-                  parameters.pointee.file_descriptor_mapping_count = Int32(fileDescriptorMapping.count)
-                  parameters.pointee.file_descriptor_mapping = fileDescriptorMapping.baseAddress
-                  shwift_spawn(parameters)
+                  Process(
+                    id: ShwiftSpawn(
+                      executablePath,
+                      arguments.baseAddress,
+                      workingDirectory,
+                      environment.baseAddress,
+                      Int32(fileDescriptorMapping.count),
+                      fileDescriptorMapping.baseAddress,
+                      spawnContext,
+                      monitor.rawValue))
                 }
               }
             }
           }
         }
-        /// Only `outcome` is valid from this point on
-        let outcome = parameters.pointee.outcome
-        if outcome.pid != -1 {
-          invocation.cancellationHandler = {
-            let returnValue = kill(outcome.pid, SIGTERM)
-            assert(returnValue == 0)
-          }
-          invocation.cleanupTask = {
-            try Process.wait(on: outcome.pid, canBlock: true)
-          }
+      }
+      if let process = process {
+        invocation.cancellationHandler = {
+          process.terminate()
         }
-
-        precondition(parameters.pointee.outcome.succeeded)
+        invocation.cleanupTask = {
+          /**
+           Theoretically we shouldn't need to block but there is a race condition where the file descriptor can be closed prior to the process becoming waitable. In the future, we can catch `monitorClosedPriorToProcessTermination` and use a non-blocking fallback (like polling).
+           */
+          try process.wait(canBlock: true)
+        }
+      }
+      let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
+      if !outcome.isSuccess {
+        #warning("Should throw an error")
+        fatalError()
       }
     }
   }
@@ -70,7 +81,14 @@ struct Process {
 
   func terminate() {
     let returnValue = kill(id, SIGTERM)
-    precondition(returnValue == 0)
+    assert(returnValue == 0)
+  }
+
+  fileprivate init?(id: pid_t) {
+    guard id != -1 else {
+      return nil
+    }
+    self.id = id
   }
 
   private let id: pid_t
@@ -160,7 +178,7 @@ extension Process {
   /**
    Waits on the process. This call is nonblocking and expects that the process represented by `processID` has already terminated
    */
-  fileprivate static func wait(on processID: pid_t, canBlock: Bool) throws {
+  fileprivate func wait(canBlock: Bool) throws {
     /// Some key paths are different on Linux and macOS
     #if canImport(Darwin)
     let pid = \siginfo_t.si_pid
@@ -171,7 +189,7 @@ extension Process {
     let sigchldInfo = \siginfo_t._sifields._sigchld
     let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
     #endif
-    
+
     var info = siginfo_t()
     /**
      We use a process ID of `0` to detect the case when the child is not in a waitable state.
@@ -180,7 +198,7 @@ extension Process {
     info[keyPath: pid] = 0
     do {
       errno = 0
-      let returnValue = waitid(P_PID, id_t(processID), &info, WEXITED | __WALL | (canBlock ? 0 : WNOHANG))
+      let returnValue = waitid(P_PID, id_t(id), &info, WEXITED | __WALL | (canBlock ? 0 : WNOHANG))
       guard returnValue == 0 else {
         throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
       }
@@ -203,4 +221,31 @@ extension Process {
       fatalError()
     }
   }
+}
+
+// MARK: Monitoring a file descriptor
+
+private extension Shell {
+
+  /**
+   Creates a file descriptor which is valid during `operation`, then waits for that file descriptor and any duplicates to close (including duplicates created as the result of spawning a new process).
+   */
+  func waitForFileDescriptorToClose<T>(
+    _ operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    let channel: Channel
+    let outcome: T
+    (channel, outcome) = try await FileDescriptor.withPipe { pipe in
+      let channel = try await nioContext.withNullOutputDevice { nullOutput in
+        try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
+          .duplicating(
+            inputDescriptor: pipe.readEnd,
+            outputDescriptor: nullOutput)
+      }
+      return (channel, try await operation(pipe.writeEnd))
+    }
+    try await channel.closeFuture.get()
+    return outcome
+  }
+
 }
