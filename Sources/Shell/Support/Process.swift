@@ -15,6 +15,8 @@ import SystemPackage
 extension Shell {
 
   public func execute(_ executable: Executable, arguments: [String]) async throws {
+    logger?.willLaunch(executable, withArguments: arguments, in: workingDirectory)
+    
     try await withIO { io in
       try await monitorFileDescriptor { monitor in
         let fileDescriptorMapping: KeyValuePairs = [
@@ -92,7 +94,7 @@ extension Shell {
           #endif
         }
 
-        print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) launched.")
+        logger?.process(process, didLaunchWith: executable, arguments: arguments, in: workingDirectory)
         monitor.cancellationHandler = {
           process.terminate()
         }
@@ -100,11 +102,11 @@ extension Shell {
           /**
            Theoretically we shouldn't need to block but there is a race condition where the file descriptor can be closed prior to the process becoming waitable. In the future, we can catch `monitorClosedPriorToProcessTermination` and use a non-blocking fallback (like polling).
            */
-           do {
+          do {
             try process.wait(canBlock: true)
-             print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) completed.")
+            logger?.process(process, for: executable, withArguments: arguments, in: workingDirectory, didComplete: nil)
           } catch {
-            print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) completed: \(error)")
+            logger?.process(process, for: executable, withArguments: arguments, in: workingDirectory, didComplete: error)
             throw error
           }
         }

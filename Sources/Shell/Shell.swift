@@ -201,6 +201,37 @@ public protocol ShellLogger {
   
 }
 
+extension ShellLogger {
+  
+  public func willLaunch(
+    _ executable: Executable,
+    withArguments arguments: [String],
+    in workingDirectory: FilePath
+  ) {
+    
+  }
+  
+  public func process(
+    _ process: Shell.Process,
+    didLaunchWith executable: Executable,
+    arguments: [String],
+    in workingDirectory: FilePath
+  ) {
+    
+  }
+
+  public func process(
+    _ process: Shell.Process,
+    for executable: Executable,
+    withArguments arguments: [String],
+    in workingDirectory: FilePath,
+    didComplete error: Error?
+  ) {
+    
+  }
+  
+}
+
 // MARK: - NIO Context
 
 actor NIOContext {

@@ -15,6 +15,10 @@ extension Shell {
 
   public struct Executable {
     
+    public var name: String {
+      path.lastComponent!.string
+    }
+    
     public let path: FilePath
 
     public struct NotFound: Error {
