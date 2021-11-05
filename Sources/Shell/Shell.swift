@@ -11,7 +11,8 @@ public struct Shell {
     environment: [String: String],
     standardInput: Input,
     standardOutput: Output,
-    standardError: Output)
+    standardError: Output,
+    logger: ShellLogger? = nil)
   {
     self.workingDirectory = workingDirectory
     self.environment = environment
@@ -19,15 +20,34 @@ public struct Shell {
     self.standardOutput = standardOutput
     self.standardError = standardError
     self.nioContext = NIOContext()
+    self.logger = logger
   }
-
-  init(
+  
+  public func subshell(
+    pushing path: FilePath? = nil,
+    replacingEnvironmentWith newEnvironment: [String: String]? = nil,
+    standardInput: Input? = nil,
+    standardOutput: Output? = nil,
+    standardError: Output? = nil
+  ) -> Shell {
+    return Shell(
+      workingDirectory: path.map(workingDirectory.pushing) ?? workingDirectory,
+      environment: newEnvironment ?? environment,
+      standardInput: standardInput ?? self.standardInput,
+      standardOutput: standardOutput ?? self.standardOutput,
+      standardError: standardError ?? self.standardError,
+      nioContext: nioContext,
+      logger: logger)
+  }
+  
+  private init(
     workingDirectory: FilePath,
     environment: [String: String],
     standardInput: Input,
     standardOutput: Output,
     standardError: Output,
-    nioContext: NIOContext)
+    nioContext: NIOContext,
+    logger: ShellLogger?)
   {
     self.workingDirectory = workingDirectory
     self.environment = environment
@@ -35,18 +55,20 @@ public struct Shell {
     self.standardOutput = standardOutput
     self.standardError = standardError
     self.nioContext = nioContext
+    self.logger = logger
   }
 
-  let standardInput: Input
-  let standardOutput: Output
-  let standardError: Output
+  private let standardInput: Input
+  private let standardOutput: Output
+  private let standardError: Output
   let nioContext: NIOContext
+  let logger: ShellLogger?
 }
 
 // MARK: - IO
 
 extension Shell {
-
+  
   public struct Input {
     
     public static let standardInput = Input(kind: .standardInput)
@@ -89,84 +111,25 @@ extension Shell {
     fileprivate let kind: Kind
   }
 
-  struct Invocation {
+  struct IO {
     let standardInput: FileDescriptor
     let standardOutput: FileDescriptor
     let standardError: FileDescriptor
-    
-    /**
-     The invocation will wait on this file descriptor to close before it completes. An invocation's lifetime can be extended by, for instance, passing a duplicate of this descriptor to a child process.
-     */
-    let monitor: FileDescriptor
-
-    /**
-     A closure which runs if the task is cancelled before the output and error channels are closed.
-     */
-    var cancellationHandler: (() -> Void)?
-
-    /**
-     A task which will be run if `command` returns successfully after the invocation outputs have closed.
-     */
-    var cleanupTask: (() throws -> Void)?
-
   }
 
-  func invoke<T>(
-    _ command: (inout Invocation) async throws -> T
+  func withIO<T>(
+    _ operation: (IO) async throws -> T
   ) async throws -> T {
     try await withFileDescriptor(for: \.standardInput) { standardInput in
       try await withFileDescriptor(for: \.standardOutput) { standardOutput in
         try await withFileDescriptor(for: \.standardError) { standardError in
-          let future: EventLoopFuture<T>
-          /// This value should only be used to call callbacks installed by `command`
-          let unsafeInvocation: Invocation
-          (future, unsafeInvocation) = try await FileDescriptor.withPipe { monitorPipe in
-            try await nioContext.withNullOutputDevice { nullOutputDevice in
-              let channel = try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
-                .channelInitializer { channel in
-                  channel.pipeline.addHandler(MonitorHandler())
-                }
-                .duplicating(
-                  inputDescriptor: monitorPipe.readEnd,
-                  outputDescriptor: nullOutputDevice)
-              var invocation = Invocation(
-                standardInput: standardInput, 
-                standardOutput: standardOutput,
-                standardError: standardError,
-                monitor: monitorPipe.writeEnd)
-              let outcome = try await command(&invocation)
-              let future = channel.closeFuture.map { _ in outcome }
-              return (future, invocation)
-            }
-          }
-          let outcome: T
-          do {
-            /// `closeFuture` can only be awaited on after `withPipe` returns, closing the temporary descriptors.
-            outcome = try await withTaskCancellationHandler(
-              handler: {
-                unsafeInvocation.cancellationHandler?()
-              }, 
-              operation: {
-                try await future.get()
-              })
-          } catch {
-            try unsafeInvocation.cleanupTask?()
-            throw error
-          }
-          try unsafeInvocation.cleanupTask?()
-          return outcome
+          let io = IO(
+            standardInput: standardInput,
+            standardOutput: standardOutput,
+            standardError: standardError)
+          return try await operation(io)
         }
       }
-    }
-  }
-  
-  private final class MonitorHandler: ChannelInboundHandler {
-    typealias InboundIn = ByteBuffer
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-      /**
-       Writing data on the monitor descriptor is probably an error. In the future we might want to make incoming data cancel the invocation.
-       */
-      assertionFailure()
     }
   }
   
@@ -212,6 +175,30 @@ extension Shell {
     }
   }
 
+}
+
+// MARK: - Logging
+
+public protocol ShellLogger {
+  
+  func willLaunch(
+    _ executable: Executable,
+    withArguments arguments: [String],
+    in workingDirectory: FilePath)
+  
+  func process(
+    _ process: Shell.Process,
+    didLaunchWith executable: Executable,
+    arguments: [String],
+    in workingDirectory: FilePath)
+
+  func process(
+    _ process: Shell.Process,
+    for executable: Executable,
+    withArguments arguments: [String],
+    in workingDirectory: FilePath,
+    didComplete error: Error?)
+  
 }
 
 // MARK: - NIO Context

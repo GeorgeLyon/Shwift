@@ -50,13 +50,19 @@ struct Script {
         _ = try await shell.pipe(
           .output,
           of: { shell in
-            try? await shell.execute(cat, arguments: ["/dev/urandom"])
+            try? await shell
+              /// `cat` may log to `stderr` once `xxd` closes its end of the pipe
+              .subshell(standardError: .nullDevice)
+              .execute(cat, arguments: ["/dev/urandom"])
           },
           to: { shell in
             try await shell.pipe(
               .output,
               of: { shell in
-                try? await shell.execute(xxd, arguments: [])
+                try? await shell
+                  /// `xxd` may log to `stderr` once `head` closes its end of the pipe
+                  .subshell(standardError: .nullDevice)
+                  .execute(xxd, arguments: [])
               },
               to: { shell in
                 try await shell.execute(head, arguments: ["-n2"])

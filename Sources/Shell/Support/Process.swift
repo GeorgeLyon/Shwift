@@ -15,100 +15,100 @@ import SystemPackage
 extension Shell {
 
   public func execute(_ executable: Executable, arguments: [String]) async throws {
-    try await invoke { invocation in
-      let fileDescriptorMapping: KeyValuePairs<FileDescriptor, FileDescriptor> = [
-        invocation.standardInput: .standardInput,
-        invocation.standardOutput: .standardOutput,
-        invocation.standardError: .standardError,
-        invocation.monitor: FileDescriptor(rawValue: STDERR_FILENO + 1)
-      ]
-      precondition(Set(fileDescriptorMapping.map(\.value)).count == fileDescriptorMapping.count)
-
-      #if canImport(Darwin)
-      let process: Process?
-      do {
-        var attributes = try PosixSpawn.Attributes()
-        defer { try! attributes.destroy() }
-        try attributes.setFlags(.closeFileDescriptorsByDefault)
+    try await withIO { io in
+      try await monitorFileDescriptor { monitor in
+        let fileDescriptorMapping: KeyValuePairs = [
+          io.standardInput: .standardInput,
+          io.standardOutput: .standardOutput,
+          io.standardError: .standardError,
+          monitor.descriptor: FileDescriptor(rawValue: STDERR_FILENO + 1)
+        ]
+        precondition(Set(fileDescriptorMapping.map(\.value)).count == fileDescriptorMapping.count)
+      
+        let process: Process
+        do {
+          #if canImport(Darwin)
+          var attributes = try PosixSpawn.Attributes()
+          defer { try! attributes.destroy() }
+          try attributes.setFlags(.closeFileDescriptorsByDefault)
+          
+          var actions = try PosixSpawn.FileActions()
+          defer { try! actions.destroy() }
+          try actions.addChangeDirectory(to: workingDirectory)
+          for (source, target) in fileDescriptorMapping {
+            try actions.addDuplicate(source, as: target)
+          }
         
-        var actions = try PosixSpawn.FileActions()
-        defer { try! actions.destroy() }
-        try actions.addChangeDirectory(to: workingDirectory)
-        for (source, target) in fileDescriptorMapping {
-          try actions.addDuplicate(source, as: target)
-        }
-        
-        process = Process(id: try PosixSpawn.spawn(
-          executable.path,
-          arguments: [executable.path.string] + arguments,
-          environment: environment,
-          fileActions: &actions,
-          attributes: &attributes))
-      }
-      #elseif canImport(Glibc)
-      let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
-        workingDirectory.withPlatformString { workingDirectory in
-          ShwiftSpawnContextCreate(
-            executablePath, 
-            workingDirectory,
-            Int32(arguments.count + 1),
-            Int32(environment.count),
-            Int32(fileDescriptorMapping.count))!
-        }
-      }
-      defer { ShwiftSpawnContextDestroy(spawnContext) }
+          let id = Process.ID(
+            rawValue: try PosixSpawn.spawn(
+              executable.path,
+              arguments: [executable.path.string] + arguments,
+              environment: environment,
+              fileActions: &actions,
+              attributes: &attributes))!
+          process = Process(id: id)
+          #elseif canImport(Glibc)
+          let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
+            workingDirectory.withPlatformString { workingDirectory in
+              ShwiftSpawnContextCreate(
+                executablePath,
+                workingDirectory,
+                Int32(arguments.count + 1),
+                Int32(environment.count),
+                Int32(fileDescriptorMapping.count))!
+            }
+          }
+          defer { ShwiftSpawnContextDestroy(spawnContext) }
 
-      for (source, target) in fileDescriptorMapping {
-        ShwiftSpawnContextAddFileDescriptorMapping(spawnContext, source.rawValue, target.rawValue)
-      }
+          for (source, target) in fileDescriptorMapping {
+            ShwiftSpawnContextAddFileDescriptorMapping(spawnContext, source.rawValue, target.rawValue)
+          }
 
-      executable.path.withPlatformString { path in 
-        ShwiftSpawnContextAddArgument(spawnContext, path)
-      }
-      for argument in arguments {
-        argument.withCString { argument in
-          ShwiftSpawnContextAddArgument(spawnContext, argument)
+          executable.path.withPlatformString { path in
+            ShwiftSpawnContextAddArgument(spawnContext, path)
+          }
+          for argument in arguments {
+            argument.withCString { argument in
+              ShwiftSpawnContextAddArgument(spawnContext, argument)
+            }
+          }
+          
+          for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
+            ShwiftSpawnContextAddEnvironmentEntry(spawnContext, "\(key)=\(value)")
+          }
+          
+          process = try! await monitorFileDescriptor { monitor in
+            Process(id: Process.ID(rawValue: ShwiftSpawn(spawnContext, monitor.descriptor.rawValue))!)
+          }
+          let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
+          guard outcome.isSuccess else {
+            let failure = outcome.payload.failure
+            throw Process.SpawnError(
+              file: String(cString: failure.file),
+              line: failure.line,
+              returnValue: failure.returnValue,
+              errorNumber: failure.error)
+          }
+          #endif
         }
-      }
-      for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
-        ShwiftSpawnContextAddEnvironmentEntry(spawnContext, "\(key)=\(value)")
-      }
-      let process = try await waitForFileDescriptorToClose { monitor in
-        Process(id: ShwiftSpawn(spawnContext, monitor.rawValue))
-      }
-      #endif
 
-      if let process = process {
-        print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) launched.")
-        invocation.cancellationHandler = {
+        print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) launched.")
+        monitor.cancellationHandler = {
           process.terminate()
         }
-        invocation.cleanupTask = {
+        monitor.completionHandler = {
           /**
            Theoretically we shouldn't need to block but there is a race condition where the file descriptor can be closed prior to the process becoming waitable. In the future, we can catch `monitorClosedPriorToProcessTermination` and use a non-blocking fallback (like polling).
            */
            do {
             try process.wait(canBlock: true)
-            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed.")
+             print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) completed.")
           } catch {
-            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed: \(error)")
+            print("\(#filePath):\(#line) - \(process.id.rawValue) \(executable.path.lastComponent!.string) completed: \(error)")
             throw error
           }
         }
       }
-
-      #if canImport(Glibc)
-      /// Process the outcome
-      let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
-      guard outcome.isSuccess else {
-        let failure = outcome.payload.failure
-        throw Process.SpawnError(
-          file: String(cString: failure.file),
-          line: failure.line, 
-          returnValue: failure.returnValue, 
-          errorNumber: failure.error)
-      }
-      #endif
     }
   }
 
@@ -116,21 +116,31 @@ extension Shell {
 
 // MARK: - Process
 
-struct Process {
+typealias Process = Shell.Process
 
-  func terminate() {
-    let returnValue = kill(id, SIGTERM)
-    assert(returnValue == 0)
-  }
+extension Shell {
+  public struct Process {
 
-  fileprivate init?(id: pid_t) {
-    guard id != -1 else {
-      return nil
+    func terminate() {
+      let returnValue = kill(id.rawValue, SIGTERM)
+      assert(returnValue == 0)
     }
-    self.id = id
-  }
 
-  fileprivate let id: pid_t
+    fileprivate init(id: ID) {
+      self.id = id
+    }
+
+    public struct ID: RawRepresentable {
+      public init?(rawValue: pid_t) {
+        guard rawValue != -1 else {
+          return nil
+        }
+        self.rawValue = rawValue
+      }
+      public let rawValue: pid_t
+    }
+    public let id: ID
+  }
 }
 
 // MARK: - Support
@@ -251,7 +261,7 @@ extension Process {
       if !canBlock {
         flags |= WNOHANG
       }
-      let returnValue = waitid(P_PID, id_t(id), &info, flags)
+      let returnValue = waitid(P_PID, id_t(id.rawValue), &info, flags)
       guard returnValue == 0 else {
         throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
       }
@@ -279,27 +289,69 @@ extension Process {
 // MARK: Monitoring file descriptors
 
 private extension Shell {
+  
+  struct FileDescriptorMonitor {
+    /**
+     The descriptor being monitored. `monitorFileDescriptor` will wait on this descriptor an any duplicates to close before returning.
+     */
+    let descriptor: FileDescriptor
+    
+    /**
+     A closure which runs if the task is cancelled before `monitorFileDescriptor` returns
+     */
+    var cancellationHandler: (() -> Void)?
 
+    /**
+     A closure which will be run after `descriptor` is closed but before `monitorFileDescriptor` returns
+     */
+    var completionHandler: (() throws -> Void)?
+  }
+  
   /**
    Creates a file descriptor which is valid during `operation`, then waits for that file descriptor and any duplicates to close (including duplicates created as the result of spawning a new process).
    */
-  func waitForFileDescriptorToClose<T>(
-    _ operation: (FileDescriptor) async throws -> T
+  func monitorFileDescriptor<T>(
+    _ operation: (inout FileDescriptorMonitor) async throws -> T
   ) async throws -> T {
-    let channel: Channel
-    let outcome: T
-    (channel, outcome) = try await FileDescriptor.withPipe { pipe in
+    let future: EventLoopFuture<T>
+    let unsafeMonitor: FileDescriptorMonitor
+    (future, unsafeMonitor) = try await FileDescriptor.withPipe { pipe in
       let channel = try await nioContext.withNullOutputDevice { nullOutput in
         try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
-          .channelOption(ChannelOptions.autoRead, value: false)
+          .channelInitializer { channel in
+            channel.pipeline.addHandler(MonitorHandler())
+          }
           .duplicating(
             inputDescriptor: pipe.readEnd,
             outputDescriptor: nullOutput)
       }
-      return (channel, try await operation(pipe.writeEnd))
+      var monitor = FileDescriptorMonitor(descriptor: pipe.writeEnd)
+      let outcome = try await operation(&monitor)
+      let future = channel.closeFuture.map { _ in outcome }
+      return (future, monitor)
     }
-    try await channel.closeFuture.get()
+    /// `unsafeMonitor.descriptor` may be invalid at this point
+    let outcome: T = await withTaskCancellationHandler(
+      handler: {
+        unsafeMonitor.cancellationHandler?()
+      },
+      operation: {
+        /// `future` can only be awaited on after `withPipe` returns, closing the temporary descriptors.
+        let outcome = try! await future.get()
+        return outcome
+      })
+    try unsafeMonitor.completionHandler?()
     return outcome
+  }
+  
+  private final class MonitorHandler: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+      /**
+       Writing data on the monitor descriptor is probably an error. In the future we might want to make incoming data cancel the invocation.
+       */
+      assertionFailure()
+    }
   }
 
 }
