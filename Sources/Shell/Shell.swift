@@ -93,6 +93,11 @@ extension Shell {
     let standardInput: FileDescriptor
     let standardOutput: FileDescriptor
     let standardError: FileDescriptor
+    
+    /**
+     The invocation will wait on this file descriptor to close before it completes. An invocation's lifetime can be extended by, for instance, passing a duplicate of this descriptor to a child process.
+     */
+    let monitor: FileDescriptor
 
     /**
      A closure which runs if the task is cancelled before the output and error channels are closed.
@@ -115,34 +120,22 @@ extension Shell {
           let future: EventLoopFuture<T>
           /// This value should only be used to call callbacks installed by `command`
           let unsafeInvocation: Invocation
-          (future, unsafeInvocation) = try await FileDescriptor.withPipe { outputPipe in 
-            try await FileDescriptor.withPipe { errorPipe in
-              let bootstrap = NIOPipeBootstrap(group: nioContext.eventLoopGroup)
-                .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
+          (future, unsafeInvocation) = try await FileDescriptor.withPipe { monitorPipe in
+            try await nioContext.withNullOutputDevice { nullOutputDevice in
+              let channel = try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
                 .channelInitializer { channel in
-                  channel.pipeline.addHandler(EchoHandler())
+                  channel.pipeline.addHandler(MonitorHandler())
                 }
-              let outputChannel = try await bootstrap
                 .duplicating(
-                  inputDescriptor: outputPipe.readEnd, 
-                  outputDescriptor: standardOutput)
-              let errorChannel = try await bootstrap
-                .duplicating(
-                  inputDescriptor: errorPipe.readEnd, 
-                  outputDescriptor: standardError)
+                  inputDescriptor: monitorPipe.readEnd,
+                  outputDescriptor: nullOutputDevice)
               var invocation = Invocation(
                 standardInput: standardInput, 
-                standardOutput: outputPipe.writeEnd, 
-                standardError: errorPipe.writeEnd)
+                standardOutput: standardOutput,
+                standardError: standardError,
+                monitor: monitorPipe.writeEnd)
               let outcome = try await command(&invocation)
-              /**
-               Many invocations will spawn child processes, and there are a number of mechanisms for detecting when a child process is "complete". We choose to always create a pipe for `stdout` and `stderr` and considering the process terminated when those are closed. This requires an extra copy (since we read from the pipe and write the output to the desired `Output`), but prefer the robustness of this approach to some of the others we have considered:
-                - Listening for SIGCHLD requires installing a global signal handler, which would make this library incompatible with other libraries or applications that implement their own signal handling. Additionaly, SIGCHILD is raised for all child processes without any indication which child process terminated, making it difficult to reap child processes correctly (and not accidentally reap child processes created outside of this library).
-                - Adding a socket (as `swift-corelibs-foundation` does) or a pipe and waiting for those to be closed as a result of the child process terminating requires passing an extra file descriptor to the child process which may result in unexpected behavior as some programs may do things like close all file descriptors which the program does not know about (Python may be one such program [Citation Needed]).
-               */
-              let future = outputChannel.closeFuture
-                .and(errorChannel.closeFuture)
-                .map { _ in outcome }
+              let future = channel.closeFuture.map { _ in outcome }
               return (future, invocation)
             }
           }
@@ -164,6 +157,16 @@ extension Shell {
           return outcome
         }
       }
+    }
+  }
+  
+  private final class MonitorHandler: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+      /**
+       Writing data on the monitor descriptor is probably an error. In the future we might want to make incoming data cancel the invocation.
+       */
+      assertionFailure()
     }
   }
   
@@ -207,22 +210,6 @@ extension Shell {
     case .unmanaged(let fileDescriptor):
       return try await operation(fileDescriptor)
     }
-  }
-
-  private final class EchoHandler: ChannelInboundHandler {
-    typealias InboundIn = ByteBuffer
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-      context.write(data, promise: nil)
-    }
-    func channelReadComplete(context: ChannelHandlerContext) {
-      context.flush()
-    }
-    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-      if case ChannelEvent.inputClosed = event {
-        context.close(promise: nil)
-      }
-    }
-    
   }
 
 }

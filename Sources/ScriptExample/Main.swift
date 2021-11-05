@@ -1,6 +1,6 @@
 
 import Shell
-import class Foundation.FileManager
+import Foundation
 
 import SystemPackage
 
@@ -9,7 +9,7 @@ struct Script {
   static func main() async throws {
     let shell = Shell(
       workingDirectory: .init(FileManager.default.currentDirectoryPath),
-      environment: [:],
+      environment: ProcessInfo.processInfo.environment,
       standardInput: .nullDevice,
       standardOutput: .standardOutput,
       standardError: .standardError)
@@ -41,10 +41,10 @@ struct Script {
 
         printSeparator()
 
-        try await shell.pipe(
+        _ = try await shell.pipe(
           .output,
           of: { shell in
-            try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+            try? await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
           },
           to: { shell in
             try await shell.execute(sed, arguments: ["s/Bar/Baz/"])
@@ -52,16 +52,16 @@ struct Script {
 
         printSeparator()
         
-        try await shell.pipe(
+        _ = try await shell.pipe(
           .output,
           of: { shell in
-            try await shell.execute(cat, arguments: ["/dev/urandom"])
+            try? await shell.execute(cat, arguments: ["/dev/urandom"])
           },
           to: { shell in
             try await shell.pipe(
               .output,
               of: { shell in
-                try await shell.execute(xxd, arguments: [])
+                try? await shell.execute(xxd, arguments: [])
               },
               to: { shell in
                 try await shell.execute(head, arguments: ["-n2"])

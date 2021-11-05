@@ -1,22 +1,15 @@
 
-#if canImport(Darwin)
-import let Darwin.SIGPIPE
-#elseif canImport(Glibc)
-import let Glibc.SIGPIPE
-#endif
-
-
 extension Shell {
   
   public enum OutputChannel {
     case output, error
   }
 
-  public func pipe<T>(
+  public func pipe<SourceOutcome, DestinationOutcome>(
     _ outputChannel: OutputChannel,
-    of source: (Shell) async throws -> Void,
-    to destination: (Shell) async throws -> T
-  ) async throws -> T {
+    of source: (Shell) async throws -> SourceOutcome,
+    to destination: (Shell) async throws -> DestinationOutcome
+  ) async throws -> (source: SourceOutcome, destination: DestinationOutcome) {
     
     try await invoke { invocation in
       let pipe = try FileDescriptor.pipe()
@@ -28,14 +21,9 @@ extension Shell {
         standardOutput: .unmanaged(pipe.writeEnd),
         standardError: .unmanaged(invocation.standardError),
         nioContext: nioContext)
-      async let sourceOutcome: Void = {
+      async let sourceOutcome: SourceOutcome = {
         defer { try! pipe.writeEnd.close() }
-        do {
-          return try await source(sourceShell)
-        } catch Process.TerminationError.uncaughtSignal(SIGPIPE, coreDumped: false) {
-          /// It is OK for the source invocation to terminate because it is writing to a closed pipe.
-          return ()
-        }
+        return try await source(sourceShell)
       }()
       
       let destinationShell = Shell(
@@ -45,16 +33,12 @@ extension Shell {
         standardOutput: .unmanaged(invocation.standardOutput),
         standardError: .unmanaged(invocation.standardError),
         nioContext: nioContext)
-      async let destinationOutcome: T = {
+      async let destinationOutcome: DestinationOutcome = {
         defer { try! pipe.readEnd.close() }
         return try await destination(destinationShell)
       }()
       
-      try await sourceOutcome
-      return try await destinationOutcome
+      return (try await sourceOutcome, try await destinationOutcome)
     }
   }
-    
-
-    
 }

@@ -20,7 +20,9 @@ extension Shell {
         invocation.standardInput: .standardInput,
         invocation.standardOutput: .standardOutput,
         invocation.standardError: .standardError,
+        invocation.monitor: FileDescriptor(rawValue: STDERR_FILENO + 1)
       ]
+      precondition(Set(fileDescriptorMapping.map(\.value)).count == fileDescriptorMapping.count)
 
       #if canImport(Darwin)
       let process: Process?
@@ -46,18 +48,22 @@ extension Shell {
       #elseif canImport(Glibc)
       let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
         workingDirectory.withPlatformString { workingDirectory in
-          let context = ShwiftSpawnContextCreate(
+          ShwiftSpawnContextCreate(
             executablePath, 
             workingDirectory,
             Int32(arguments.count + 1),
             Int32(environment.count),
             Int32(fileDescriptorMapping.count))!
-          ShwiftSpawnContextAddArgument(context, executablePath)
-          return context
         }
       }
+      defer { ShwiftSpawnContextDestroy(spawnContext) }
+
       for (source, target) in fileDescriptorMapping {
         ShwiftSpawnContextAddFileDescriptorMapping(spawnContext, source.rawValue, target.rawValue)
+      }
+
+      executable.path.withPlatformString { path in 
+        ShwiftSpawnContextAddArgument(spawnContext, path)
       }
       for argument in arguments {
         argument.withCString { argument in
@@ -67,7 +73,6 @@ extension Shell {
       for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
         ShwiftSpawnContextAddEnvironmentEntry(spawnContext, "\(key)=\(value)")
       }
-      defer { ShwiftSpawnContextDestroy(spawnContext) }
       let process = try await waitForFileDescriptorToClose { monitor in
         Process(id: ShwiftSpawn(spawnContext, monitor.rawValue))
       }
@@ -79,13 +84,16 @@ extension Shell {
           process.terminate()
         }
         invocation.cleanupTask = {
-          defer {
-            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed.")
-          }
           /**
            Theoretically we shouldn't need to block but there is a race condition where the file descriptor can be closed prior to the process becoming waitable. In the future, we can catch `monitorClosedPriorToProcessTermination` and use a non-blocking fallback (like polling).
            */
-          try process.wait(canBlock: true)
+           do {
+            try process.wait(canBlock: true)
+            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed.")
+          } catch {
+            print("\(#filePath):\(#line) - \(process) \(executable.path.lastComponent!.string) completed: \(error)")
+            throw error
+          }
         }
       }
 
@@ -268,7 +276,7 @@ extension Process {
   }
 }
 
-// MARK: Monitoring a file descriptor
+// MARK: Monitoring file descriptors
 
 private extension Shell {
 
