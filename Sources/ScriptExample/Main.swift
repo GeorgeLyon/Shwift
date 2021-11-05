@@ -75,7 +75,14 @@ struct Script {
             try? await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
           },
           to: { shell in
-            try await shell.execute(sed, arguments: ["s/Bar/Baz/"])
+            try await shell.builtin { handle in
+              for try await line in handle.input.lines {
+                try await handle.output.withTextOutputStream { stream in
+                  print(line.replacingOccurrences(of: "Bar", with: "Baz"), to: &stream)
+                }
+              }
+            }
+//            try await shell.execute(sed, arguments: ["s/Bar/Baz/"])
           })
 
         printSeparator()

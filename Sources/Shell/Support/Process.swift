@@ -318,7 +318,7 @@ private extension Shell {
     let future: EventLoopFuture<T>
     let unsafeMonitor: FileDescriptorMonitor
     (future, unsafeMonitor) = try await FileDescriptor.withPipe { pipe in
-      let channel = try await nioContext.withNullOutputDevice { nullOutput in
+      let channel = try await withNullOutputDevice { nullOutput in
         try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
           .channelInitializer { channel in
             channel.pipeline.addHandler(MonitorHandler())

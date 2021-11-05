@@ -120,9 +120,9 @@ extension Shell {
   func withIO<T>(
     _ operation: (IO) async throws -> T
   ) async throws -> T {
-    try await withFileDescriptor(for: \.standardInput) { standardInput in
-      try await withFileDescriptor(for: \.standardOutput) { standardOutput in
-        try await withFileDescriptor(for: \.standardError) { standardError in
+    try await withFileDescriptor(for: standardInput) { standardInput in
+      try await withFileDescriptor(for: standardOutput) { standardOutput in
+        try await withFileDescriptor(for: standardError) { standardError in
           let io = IO(
             standardInput: standardInput,
             standardOutput: standardOutput,
@@ -133,11 +133,23 @@ extension Shell {
     }
   }
   
-  private func withFileDescriptor<T>(
-    for input: KeyPath<Shell, Input>,
+  func withNullInputDevice<T>(
     _ operation: (FileDescriptor) async throws -> T
   ) async throws -> T {
-    switch self[keyPath: input].kind {
+    try await withFileDescriptor(for: Input.nullDevice, operation)
+  }
+  
+  func withNullOutputDevice<T>(
+    operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    try await nioContext.withNullOutputDevice(operation)
+  }
+  
+  private func withFileDescriptor<T>(
+    for input: Input,
+    _ operation: (FileDescriptor) async throws -> T
+  ) async throws -> T {
+    switch input.kind {
     case .standardInput:
       return try await operation(.standardInput)
     case .nullDevice:
@@ -160,10 +172,10 @@ extension Shell {
   }
   
   private func withFileDescriptor<T>(
-    for output: KeyPath<Shell, Output>,
+    for output: Output,
     _ operation: (FileDescriptor) async throws -> T
   ) async throws -> T {
-    switch self[keyPath: output].kind {
+    switch output.kind {
     case .standardOutput:
       return try await operation(.standardOutput)
     case .standardError:
@@ -236,12 +248,19 @@ extension ShellLogger {
 
 actor NIOContext {
   nonisolated let eventLoopGroup: EventLoopGroup
+  nonisolated let fileIO: NonBlockingFileIO
+  private let threadPool: NIOThreadPool
   
   fileprivate init() {
     eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    threadPool = NIOThreadPool(numberOfThreads: 6)
+    fileIO = NonBlockingFileIO(threadPool: threadPool)
   }
   deinit {
     eventLoopGroup.shutdownGracefully { error in
+      precondition(error == nil)
+    }
+    threadPool.shutdownGracefully { error in
       precondition(error == nil)
     }
   }
@@ -249,7 +268,7 @@ actor NIOContext {
   /**
    - note: In actuality, the null device is implemented as a pipe which discards anything written to it's write end. The problem with using something like `FileDescriptor.open("/dev/null", .writeOnly)` is that NIO on Linux uses `epoll` to read from file descriptors, and `epoll` is incompatible with `/dev/null`.
    */
-  func withNullOutputDevice<T>(
+  fileprivate func withNullOutputDevice<T>(
     _ operation: (FileDescriptor) async throws -> T
   ) async throws -> T {
     let device: NullOutputDevice
