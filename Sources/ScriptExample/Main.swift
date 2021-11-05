@@ -9,21 +9,16 @@ struct Script {
   static func main() async throws {
     let shell = Shell(
       workingDirectory: .init(FileManager.default.currentDirectoryPath),
-      environment: ProcessInfo.processInfo.environment,
+      environment: ["PATH": ProcessInfo.processInfo.environment["PATH"]!],
       standardInput: .nullDevice,
       standardOutput: .standardOutput,
       standardError: .standardError)
     
-    #if os(macOS)
-    let echo = Executable(path: "/bin/echo")
-    let cat = Executable(path: "/bin/cat")
-    #elseif os(Linux)
-    let echo = Executable(path: "/usr/bin/echo")
-    let cat = Executable(path: "/usr/bin/cat")
-    #endif
-    let sed = Executable(path: "/usr/bin/sed")
-    let xxd = Executable(path: "/usr/bin/xxd")
-    let head = Executable(path: "/usr/bin/head")
+    let echo = try shell.executable(named: "echo")
+    let cat = try shell.executable(named: "cat")
+    let sed = try shell.executable(named: "sed")
+    let xxd = try shell.executable(named: "xxd")
+    let head = try shell.executable(named: "head")
 
     func printSeparator() {
       let pipe = try! FileDescriptor.pipe()

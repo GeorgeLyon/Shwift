@@ -27,9 +27,10 @@ let package = Package(
         .product(name: "_NIOConcurrency", package: "swift-nio"),
         .target(name: "CLinuxSupport", condition: .when(platforms: [.linux])),
       ]),
-    .target(name: "CLinuxSupport")
-//    .testTarget(
-//      name: "ShwiftTests",
-//      dependencies: ["Shwift"]),
+    .target(name: "CLinuxSupport"),
+    
+    .testTarget(
+      name: "ShellTests",
+      dependencies: ["Shell"]),
   ]
 )
