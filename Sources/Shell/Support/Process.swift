@@ -14,7 +14,7 @@ import SystemPackage
 
 extension Shell {
 
-  public func execute(_ executable: Executable, arguments: [String]) async throws {
+  public func execute(_ executable: Executable, withArguments arguments: [String]) async throws {
     logger?.willLaunch(executable, withArguments: arguments, in: workingDirectory)
     
     try await withIO { io in

@@ -31,6 +31,9 @@ let package = Package(
     
     .testTarget(
       name: "ShellTests",
-      dependencies: ["Shell"]),
+      dependencies: ["Shell"],
+      resources: [
+        .copy("Cat.txt")
+      ]),
   ]
 )

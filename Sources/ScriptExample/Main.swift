@@ -65,14 +65,14 @@ struct Script {
     for i in 0..<100000 {
       printSeparator()
       do {
-        try await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+        try await shell.execute(echo, withArguments: ["\(i):", "Foo", "Bar"])
 
         printSeparator()
 
         _ = try await shell.pipe(
           .output,
           of: { shell in
-            try? await shell.execute(echo, arguments: ["\(i):", "Foo", "Bar"])
+            try? await shell.execute(echo, withArguments: ["\(i):", "Foo", "Bar"])
           },
           to: { shell in
             try await shell.builtin { handle in
@@ -93,7 +93,7 @@ struct Script {
             try? await shell
               /// `cat` may log to `stderr` once `xxd` closes its end of the pipe
               .subshell(standardError: .nullDevice)
-              .execute(cat, arguments: ["/dev/urandom"])
+              .execute(cat, withArguments: ["/dev/urandom"])
           },
           to: { shell in
             try await shell.pipe(
@@ -102,10 +102,10 @@ struct Script {
                 try? await shell
                   /// `xxd` may log to `stderr` once `head` closes its end of the pipe
                   .subshell(standardError: .nullDevice)
-                  .execute(xxd, arguments: [])
+                  .execute(xxd, withArguments: [])
               },
               to: { shell in
-                try await shell.execute(head, arguments: ["-n2"])
+                try await shell.execute(head, withArguments: ["-n2"])
               })
           })
 
