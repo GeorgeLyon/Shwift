@@ -161,7 +161,7 @@ extension Process {
   /**
    An error which caused a spawned process to terminate
    */
-  enum TerminationError: Swift.Error {
+  public enum TerminationError: Swift.Error {
     /**
      Waiting on the process failed.
      */
