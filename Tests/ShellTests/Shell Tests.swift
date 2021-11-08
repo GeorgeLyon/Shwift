@@ -217,7 +217,7 @@ final class ShellTests: XCTestCase {
         e2.fulfill()
       }
     }
-    wait(for: [e1, e2], timeout: 5)
+    wait(for: [e1, e2], timeout: 2)
   }
   
   private let supportFilePath = Bundle.module.path(forResource: "Cat", ofType: "txt")!

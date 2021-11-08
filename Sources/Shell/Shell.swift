@@ -2,6 +2,9 @@ import SystemPackage
 @_implementationOnly import NIO
 @_implementationOnly import _NIOConcurrency
 
+/// `FilePath` is used extensively in the API so we export it
+@_exported import struct SystemPackage.FilePath
+
 public struct Shell {
   public let workingDirectory: FilePath
   public let environment: [String: String]
