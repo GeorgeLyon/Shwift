@@ -67,6 +67,30 @@ final class ShellTests: XCTestCase {
         """)
   }
   
+  func testWrite() throws {
+    let temporaryDirectory = FileManager.default.temporaryDirectory
+    let testFileName = "testWrite.txt"
+    let testContents = "Write Test"
+    try XCTAssertOutput(
+      of: { shell in
+        _ = try await shell.pipe(
+          .output,
+          of: { shell in
+            let echo = try shell.executable(named: "echo")
+            try await shell.execute(echo, withArguments: ["-n", testContents])
+          },
+          to: { shell in
+            try await shell
+              .subshell(pushing: FilePath(temporaryDirectory.path))
+              .write(to: FilePath(testFileName))
+          })
+        try XCTAssertEqual(
+          String(contentsOf: temporaryDirectory.appendingPathComponent(testFileName)),
+          testContents)
+      },
+      is: nil)
+  }
+  
   func testMatrix() throws {
 
     struct Operation {
@@ -157,7 +181,7 @@ final class ShellTests: XCTestCase {
   
   private func XCTAssertOutput(
     of operation: @escaping (Shell) async throws -> Void,
-    is expected: String,
+    is expected: String?,
     message: @escaping @autoclosure () -> String = "",
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
@@ -182,17 +206,18 @@ final class ShellTests: XCTestCase {
     }
     Task {
       try pipe.readEnd.closeAfter {
-        let outputHandle = FileHandle(fileDescriptor: pipe.readEnd.rawValue, closeOnDealloc: false)
-        let output = String(decoding: try outputHandle.readToEnd()!, as: UTF8.self)
+        let handle = FileHandle(fileDescriptor: pipe.readEnd.rawValue, closeOnDealloc: false)
+        let data = try handle.readToEnd()
+        let string = data.map { String(decoding: $0, as: UTF8.self) }
         XCTAssertEqual(
-          output,
+          string,
           expected,
           message(),
           file: file, line: line)
         e2.fulfill()
       }
     }
-    wait(for: [e1, e2], timeout: 1)
+    wait(for: [e1, e2], timeout: 5)
   }
   
   private let supportFilePath = Bundle.module.path(forResource: "Cat", ofType: "txt")!

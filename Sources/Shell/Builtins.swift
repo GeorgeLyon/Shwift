@@ -18,18 +18,16 @@ extension Shell {
   public func builtin<Outcome>(
     operation: (inout Builtin.Handle) async throws -> Outcome
   ) async throws -> Outcome {
-    let bootstrap = NIOPipeBootstrap(group: nioContext.eventLoopGroup)
-      .channelOption(ChannelOptions.autoRead, value: false)
-      .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
-
     return try await withIO { io in
       let ioHandler = AsyncInboundHandler<ByteBuffer>()
-      let ioChannel = try await bootstrap
+      let ioChannel = try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
+        .channelOption(ChannelOptions.autoRead, value: false)
+        .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
         .channelInitializer { channel in
           /**
-           Theoretically if we add this before a call to `channel.read`, it _should_ receive all data sent on the channel. Unfortunately we ran into a case where on Linux, adding the handler outside of the channel initializer made us miss some data. This could be easily reproduced by piping `echo` to a `cature` builtin.
+           Theoretically if we add this before a call to `channel.read`, it _should_ receive all data sent on the channel. Unfortunately we ran into a case where on Linux, adding the handler outside of the channel initializer made us miss some data.
            */
-          channel.pipeline.addHandler(ioHandler)
+          return channel.pipeline.addHandler(ioHandler)
         }
         .duplicating(
           inputDescriptor: io.standardInput,
@@ -44,6 +42,12 @@ extension Shell {
         })
         .compactMap { event -> ByteBuffer? in
           switch event {
+          case .handlerAdded(let context):
+            /// Call `read` only if we access the byte buffers
+            context.eventLoop.execute {
+              context.read()
+            }
+            return nil
           case .channelRead(_, let buffer):
             return buffer
           case .channelReadComplete(let context):
@@ -55,7 +59,6 @@ extension Shell {
             return nil
           }
         }
-      ioChannel.read()
       
       let errorChannel: Channel
       do {
@@ -64,13 +67,10 @@ extension Shell {
          More details here: https://github.com/apple/swift-nio/issues/1553
          */
         errorChannel = try await withNullInputDevice { nullInputDevice in
-          try await bootstrap
-            .channelInitializer { channel in
-              /**
-               Theoretically if we add this before a call to `channel.read`, it _should_ receive all data sent on the channel. Unfortunately we ran into a case where on Linux, adding the handler outside of the channel initializer made us miss some data. This could be easily reproduced by piping `echo` to a `cature` builtin.
-               */
-              channel.pipeline.addHandler(ioHandler)
-            }
+          try await NIOPipeBootstrap(group: nioContext.eventLoopGroup)
+            /// Even though we share these options with `ioChannel`, we have to create a new bootstrap since `childChannelInitializer` mutates `self`.
+            .channelOption(ChannelOptions.autoRead, value: false)
+            .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
             .duplicating(
               inputDescriptor: nullInputDevice,
               outputDescriptor: io.standardError)
@@ -274,18 +274,12 @@ extension Shell {
   ) async throws {
     try await builtin { handle in
       let eventLoop = nioContext.eventLoopGroup.next()
-      let flags: NIOFileHandle.Flags
-      if append {
-        flags = .posix(
-          flags: O_CREAT | O_APPEND,
-          mode: S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH)
-      } else {
-        flags = .allowFileCreation()
-      }
       let fileHandle = try await nioContext.fileIO.openFile(
         path: workingDirectory.pushing(filePath).string,
         mode: .write,
-        flags: flags,
+        flags: .posix(
+          flags: O_CREAT | (append ? O_APPEND : O_TRUNC),
+          mode: S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH),
         eventLoop: eventLoop
       )
       .get()
