@@ -2,9 +2,6 @@
 import Shell
 import Dispatch
 import SystemPackage
-import class Foundation.FileManager
-import class Foundation.ProcessInfo
-
 /**
  We consider `ArgumentParser` and `Shell` part of our public API
  */
@@ -19,49 +16,6 @@ public protocol Script: ParsableCommand {
 }
 
 extension Script {
-  
-  public func subshell<T>(
-    pushing path: FilePath? = nil,
-    updatingEnvironmentWith environmentUpdates: [String: String?] = [:],
-    standardInput: Shell.Input? = nil,
-    standardOutput: Shell.Output? = nil,
-    standardError: Shell.Output? = nil,
-    operation: @escaping () async throws -> T
-  ) async throws -> T {
-    try await Shell.withCurrent { shell in
-      var environment = shell.environment
-      for (key, value) in environmentUpdates {
-        environment[key] = value
-      }
-      let subshell = shell.subshell(
-        pushing: path,
-        replacingEnvironmentWith: environment,
-        standardInput: standardInput,
-        standardOutput: standardOutput,
-        standardError: standardError)
-      return try await Shell.withSubshell(subshell, operation: operation)
-    }
-  }
-  
-  @_disfavoredOverload
-  public func subshell<T>(
-    pushing path: FilePath? = nil,
-    updatingEnvironmentWith environmentUpdates: [String: String?] = [:],
-    standardInput: Shell.Input? = nil,
-    standardOutput: Shell.Output? = nil,
-    standardError: Shell.Output? = nil,
-    operation: @escaping () async throws -> T
-  ) -> Shell._Invocation<T> {
-    Shell._Invocation {
-      try await subshell(
-        pushing: path,
-        updatingEnvironmentWith: environmentUpdates,
-        standardInput: standardInput,
-        standardOutput: standardOutput,
-        standardError: standardError,
-        operation: operation)
-    }
-  }
   
   public var workingDirectory: FilePath {
     get async throws {
@@ -110,26 +64,9 @@ private final class ErrorBox {
   var error: Error? = nil
 }
 
-// MARK: - Shell
+// MARK: - Current Shell
 
 extension Shell {
-  
-  /**
-   A shell representing the current state of the process.
-   
-   Changing the process working directory will not change the working directory of a shell after it is created.
-   */
-  public static var process: Shell {
-    /**
-     We need to create a new shell every time so that we pick up the correct working directory
-     */
-    Shell(
-      workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
-      environment: ProcessInfo.processInfo.environment,
-      standardInput: .standardInput,
-      standardOutput: .standardOutput,
-      standardError: .standardError)
-  }
   
   public static func withCurrent<T>(
     operation: @escaping (Shell) async throws -> T
