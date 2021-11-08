@@ -39,6 +39,7 @@ extension Script {
     let box = ErrorBox()
     let sem = DispatchSemaphore(value: 0)
     Task {
+      defer { sem.signal() }
       do {
         try await Shell.$hostScript.withValue(self) {
           try await run()
@@ -49,8 +50,9 @@ extension Script {
       } catch let error as SystemPackage.Errno {
         /// Convert `SystemPackage` error into one that `ArgumentParser` understands
         box.error = ExitCode(rawValue: error.rawValue)
+      } catch {
+        box.error = error
       }
-      sem.signal()
     }
     sem.wait()
     if let error = box.error {
