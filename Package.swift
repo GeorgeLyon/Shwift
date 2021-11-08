@@ -17,6 +17,9 @@ let package = Package(
       name: "ScriptExample",
       dependencies: [
         "Shell",
+      ],
+      resources: [
+        .copy("Cat.txt")
       ]
     ),
     .target(

@@ -8,6 +8,16 @@
       "program": "${workspaceFolder}/.build/debug/ScriptExample",
       "args": [],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Tests",
+      "program": "${workspaceFolder}/.build/debug/ShwiftPackageTests.xctest",
+      "args": [
+        // "ShellTests.ShellTests/testReadFromFile"
+      ],
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

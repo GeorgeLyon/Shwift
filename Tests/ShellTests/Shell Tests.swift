@@ -46,14 +46,25 @@ final class ShellTests: XCTestCase {
       of: { shell in
         try await shell.builtin { handle in
           try await handle.output.withTextOutputStream { stream in
-            print("Builtin", to: &stream)
+            print("Builtin \("interpolation")", to: &stream)
           }
         }
       },
       is: """
-      Builtin
+      Builtin interpolation
       
       """)
+  }
+  
+  func testReadFromFile() throws {
+    try XCTAssertOutput(
+      of: { shell in
+        try await shell.read(from: FilePath(self.supportFilePath))
+      },
+      is: """
+        Cat
+        
+        """)
   }
   
   func testMatrix() throws {
@@ -86,9 +97,9 @@ final class ShellTests: XCTestCase {
           }
         }
       },
-//      Operation { shell in
-//        try await shell.read(from: FilePath(self.supportFilePath))
-//      },
+      Operation { shell in
+        try await shell.read(from: FilePath(self.supportFilePath))
+      },
     ]
 
     let destinations = [
@@ -146,7 +157,7 @@ final class ShellTests: XCTestCase {
   
   private func XCTAssertOutput(
     of operation: @escaping (Shell) async throws -> Void,
-    is output: String,
+    is expected: String,
     message: @escaping @autoclosure () -> String = "",
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
@@ -161,7 +172,6 @@ final class ShellTests: XCTestCase {
       standardError: .standardError)
     let e1 = expectation(description: "\(function):\(line) \(message())")
     let e2 = expectation(description: "\(function):\(line) \(message())")
-    
     let pipe = try FileDescriptor.pipe()
     Task {
       try await pipe.writeEnd.closeAfter {
@@ -173,9 +183,10 @@ final class ShellTests: XCTestCase {
     Task {
       try pipe.readEnd.closeAfter {
         let outputHandle = FileHandle(fileDescriptor: pipe.readEnd.rawValue, closeOnDealloc: false)
+        let output = String(decoding: try outputHandle.readToEnd()!, as: UTF8.self)
         XCTAssertEqual(
-          String(decoding: try outputHandle.readToEnd()!, as: UTF8.self),
           output,
+          expected,
           message(),
           file: file, line: line)
         e2.fulfill()

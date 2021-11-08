@@ -244,23 +244,24 @@ extension Shell {
 
   public func read(from filePath: FilePath) async throws {
     try await builtin { handle in
-      let eventLoop = nioContext.eventLoopGroup.next()
-      let (fileHandle, region) = try await nioContext.fileIO.openFile(
-        path: workingDirectory.pushing(filePath).string,
-        eventLoop: eventLoop
-      )
-      .get()
-      handle.addCleanupTask { try fileHandle.close() }
       let output = handle.output
-      try await nioContext.fileIO.readChunked(
-        fileRegion: region,
-        allocator: handle.output.channel.allocator,
-        eventLoop: eventLoop,
-        chunkHandler: { buffer in
-          output.channel.writeAndFlush(buffer).hop(to: eventLoop)
-        }
-      )
-      .get()
+      let eventLoop = output.channel.eventLoop
+      let fileHandle = try await nioContext.fileIO.openFile(
+        path: workingDirectory.pushing(filePath).string, 
+        mode: .read, 
+        eventLoop: eventLoop)
+        .get()
+      handle.addCleanupTask { try fileHandle.close() }
+      try await nioContext.fileIO
+        .readChunked(
+          fileHandle: fileHandle, 
+          byteCount: .max,
+          allocator: output.channel.allocator, 
+          eventLoop: eventLoop, 
+          chunkHandler: { buffer in
+            output.channel.writeAndFlush(buffer)
+          })
+        .get()
     }
   }
 
