@@ -3,57 +3,51 @@ import Shell
 
 // MARK: - Invoking Executables by Name
 
-public extension Script {
+public func execute(_ executableName: String, _ arguments: String?...) async throws {
+  try await execute(executableName, arguments: arguments)
+}
   
-  func execute(_ executableName: String, _ arguments: String?...) async throws {
+public func execute(_ executableName: String, arguments: [String?]) async throws {
+  try await Shell.withCurrent { shell in
+    try await shell.execute(
+      executable(named: executableName),
+      withArguments: arguments)
+  }
+}
+  
+@_disfavoredOverload
+public func execute(
+  _ executableName: String,
+  _ arguments: String?...
+) async throws -> Shell._Invocation<Void> {
+  try await execute(executableName, arguments: arguments)
+}
+  
+@_disfavoredOverload
+public func execute(
+  _ executableName: String,
+  arguments: [String?]
+) async throws -> Shell._Invocation<Void> {
+  Shell._Invocation { shell in
     try await execute(executableName, arguments: arguments)
   }
-  
-  func execute(_ executableName: String, arguments: [String?]) async throws {
-    try await Shell.withCurrent { shell in
-      try await shell.execute(
-        executable(named: executableName),
-        withArguments: arguments)
-    }
-  }
-  
-  @_disfavoredOverload
-  func execute(
-    _ executableName: String,
-    _ arguments: String?...
-  ) async throws -> Shell._Invocation<Void> {
-    try await execute(executableName, arguments: arguments)
-  }
-  
-  @_disfavoredOverload
-  func execute(
-    _ executableName: String,
-    arguments: [String?]
-  ) async throws -> Shell._Invocation<Void> {
-    Shell._Invocation { shell in
-      try await execute(executableName, arguments: arguments)
-    }
-  }
-  
 }
 
 // MARK: - Resolving Executables
 
-public extension Script {
-  func executable(named name: String) async throws -> Shell.Executable {
-    return try await Shell.withCurrent { shell in
-      try shell.executable(named: name)
-    }
+public func executable(named name: String) async throws -> Shell.Executable {
+  return try await Shell.withCurrent { shell in
+    try shell.executable(named: name)
   }
+}
   
-  /**
-   - Parameters:
-     - required: Should only ever be set to `false`, implying the initializer returns `nil` if the specified executable is not found.
-   */
-  func executable(named name: String, required: Bool) async throws -> Shell.Executable? {
-    return try await Shell.withCurrent { shell in
-      try shell.executable(named: name, required: required)
-    }
+/**
+ - Parameters:
+   - required: Should only ever be set to `false`, implying the initializer returns `nil` if the specified executable is not found.
+ */
+public func executable(named name: String, required: Bool) async throws -> Shell.Executable? {
+  return try await Shell.withCurrent { shell in
+    try shell.executable(named: name, required: required)
   }
 }
 
