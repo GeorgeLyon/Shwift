@@ -1,4 +1,6 @@
 
+#if __linux__
+
 #include "CLinuxSupportInternal.h"
 
 #include <assert.h>
@@ -149,3 +151,5 @@ int RunsInClone(ShwiftSpawnInvocation* invocation) {
   return 1;
   #undef EXPECT
 }
+
+#endif

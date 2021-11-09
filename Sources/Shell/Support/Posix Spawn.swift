@@ -4,11 +4,34 @@ import Darwin
 
 import SystemPackage
 
+struct SignalSet {
+  
+  public static var all: Self {
+    get throws {
+      try Self(sigfillset)
+    }
+  }
+  
+  public static var none: Self {
+    get throws {
+      try Self(sigemptyset)
+    }
+  }
+  
+  private init(_ fn: (UnsafeMutablePointer<sigset_t>) -> CInt) throws {
+    rawValue = sigset_t()
+    try Errno.check(fn(&rawValue))
+  }
+  var rawValue: sigset_t
+}
+
 enum PosixSpawn {
   
   public struct Flags: OptionSet {
     
     public static let closeFileDescriptorsByDefault = Flags(rawValue: POSIX_SPAWN_CLOEXEC_DEFAULT)
+    
+    public static let setSignalMask = Flags(rawValue: POSIX_SPAWN_SETSIGMASK)
     
     public init(rawValue: Int32) {
       self.rawValue = rawValue
@@ -24,6 +47,12 @@ enum PosixSpawn {
     
     public mutating func destroy() throws {
       try Errno.check(posix_spawnattr_destroy(&rawValue))
+    }
+    
+    public mutating func setBlockedSignals(to signals: SignalSet) throws {
+      try Errno.check(withUnsafePointer(to: signals.rawValue) { signals in
+        posix_spawnattr_setsigmask(&rawValue, signals)
+      })
     }
     
     public mutating func setFlags(_ flags: Flags) throws {

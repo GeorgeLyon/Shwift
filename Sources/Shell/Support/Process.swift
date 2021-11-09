@@ -32,7 +32,11 @@ extension Shell {
           #if canImport(Darwin)
           var attributes = try PosixSpawn.Attributes()
           defer { try! attributes.destroy() }
-          try attributes.setFlags(.closeFileDescriptorsByDefault)
+          try attributes.setFlags([
+            .closeFileDescriptorsByDefault,
+            .setSignalMask,
+          ])
+          try attributes.setBlockedSignals(to: .none)
           
           var actions = try PosixSpawn.FileActions()
           defer { try! actions.destroy() }
