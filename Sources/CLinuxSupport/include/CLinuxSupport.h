@@ -4,51 +4,20 @@
 
 #ifdef __linux__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
 #include <stdbool.h>
 #include <stdint.h>
-#include <sched.h>
+#include <unistd.h>
+
+// MARK: - Building an Invocation
+
+typedef struct ShwiftSpawnInvocation ShwiftSpawnInvocation;
 
 /**
- A structure which gives more concrete information about the outcome of a call to `shwiftSpawn`. 
- */
-typedef struct {
-  /**
-   if `true`, the operation succeeded in launching the requested executable and the `success` property of `payload` is valid. If `false`, launching the requested executable failed and the `failure` property of `payload` contains information about the first failure that occured.
-   */
-  bool isSuccess;
-  
-  union {
-    struct {
-
-    } success;
-    struct {
-      /// Should always be this file
-      const char *file;
-
-      /// The line at which a failure occured.
-      intptr_t line;
-
-      /// The return value of the function that caused the failure
-      intptr_t returnValue;
-
-      /// The value of `errno` after the failure was encountered
-      int error;
-    } failure;
-  } payload;
-} ShwiftSpawnOutcome;
-
-typedef struct ShwiftSpawnContext ShwiftSpawnContext;
-
-/**
- Create a `ShwiftSpawnContext`. 
+ Create a `ShwiftSpawnInvocation`.
  
- If non-NULL, the caller is responsible for eventually destroying the returned value via `ShwiftSpawnContextDestroy`.
+ If non-NULL, the caller is responsible for eventually destroying the returned value via `ShwiftSpawnInvocationDestroy`.
  */
-ShwiftSpawnContext* ShwiftSpawnContextCreate(
+ShwiftSpawnInvocation* ShwiftSpawnInvocationCreate(
   const char* executablePath,
   const char* workingDirectory,
   int argumentCapacity,
@@ -57,48 +26,71 @@ ShwiftSpawnContext* ShwiftSpawnContextCreate(
 );
 
 /**
- Destroys a `ShwiftSpawnContext`.
+ Destroys a `ShwiftSpawnInvocation`.
  */
-void ShwiftSpawnContextDestroy(ShwiftSpawnContext*);
+void ShwiftSpawnInvocationDestroy(ShwiftSpawnInvocation*);
 
 /**
  Adds an argument to this context.
 
  This function creates a copy of the argument, so the caller can safely free it once this function returns.
  */
-void ShwiftSpawnContextAddArgument(ShwiftSpawnContext*, const char*);
+void ShwiftSpawnInvocationAddArgument(ShwiftSpawnInvocation*, const char*);
 
 /**
  Adds an environment entry, must be of the form "key=value".
 
  This function creates a copy of the entry, so the caller can safely free it once this function returns.
  */
-void ShwiftSpawnContextAddEnvironmentEntry(ShwiftSpawnContext*, const char*);
+void ShwiftSpawnInvocationAddEnvironmentEntry(ShwiftSpawnInvocation*, const char*);
 
 /**
  Specifies that this context should map the existing file descriptor specified by `source` should be mapped to `target` in the spawned process. 
  This function duplicates `source`, so the caller can safely close it after this function returns.
  */
-void ShwiftSpawnContextAddFileDescriptorMapping(
-  ShwiftSpawnContext*,
+void ShwiftSpawnInvocationAddFileDescriptorMapping(
+  ShwiftSpawnInvocation*,
   int source,
   int target);
 
-/**
- Retrieves information about the outcome of `ShiwftSpawn` from a `ShwiftSpawnContext`. This should only be called once the context is "complete", which is only the case once `ShwiftSpawn` has closed the `monitor` file descriptor. Attepmting to access this prior to the context being "complete" results in undefined behavior.
- */
-ShwiftSpawnOutcome ShwiftSpawnContextGetOutcome(ShwiftSpawnContext*);
+// MARK: - Determining the outcome of an invocation
 
 /**
- Spawns a child process with the specified parameters.
+ A structure which describes how a spawn invocation failed.
+ */
+typedef struct {
+  /// The file where the error ocurred
+  const char *file;
+
+  /// The line at which a failure occured.
+  intptr_t line;
+
+  /// The return value of the function that caused the failure
+  intptr_t returnValue;
+
+  /// The value of `errno` after the failure was encountered
+  int errorNumber;
+} ShwiftSpawnInvocationFailure;
+
+/**
+ Retrieves information about the outcome of a spawn operation. This should only be called once the invocation is "complete", which is only the case once the `monitor` passed to `ShwiftSpawnInvocationLaunch` has been closed. Attepmting to access this prior to the context being "complete" will cause an error.
+
+ - Returns: If the invocation succeeded at launching the child process, returns `true` (and `failure` is not mutated). If the invocation failed to launch the child process, returns `false` and writes information about the failure to `failure`.
+ */
+bool ShwiftSpawnInvocationComplete(ShwiftSpawnInvocation*, ShwiftSpawnInvocationFailure* failure);
+
+// MARK: - Spawn
+
+/**
+ Launches a child process with according to the provided invocation.
 
  - Parameters:
-  - context: A context which will be used to access concrete information about the outcome of `ShwiftSpawn`.
-  - monitor: A file descriptor which will be duplicated and the duplicate will be closed when `context` is "complete".
+  - invocation: An object representing the invocation. An invocation object may only be launched once.
+  - monitor: A file descriptor which will be duplicated and the duplicate will be closed when `invocation` is "complete".
 - Returns: The process ID of thes spawned process, or -1. If a process ID is returned, it is the caller's responsibility to eventually `wait` on the returned ID.
  */
-pid_t ShwiftSpawn(
-  ShwiftSpawnContext* context,
+pid_t ShwiftSpawnInvocationLaunch(
+  ShwiftSpawnInvocation* invocation,
   int monitor
 );
 

@@ -50,9 +50,9 @@ extension Shell {
               attributes: &attributes))!
           process = Process(id: id)
           #elseif canImport(Glibc)
-          let spawnContext: OpaquePointer = executable.path.withPlatformString { executablePath in
+          let invocation: OpaquePointer = executable.path.withPlatformString { executablePath in
             workingDirectory.withPlatformString { workingDirectory in
-              ShwiftSpawnContextCreate(
+              ShwiftSpawnInvocationCreate(
                 executablePath,
                 workingDirectory,
                 Int32(arguments.count + 1),
@@ -60,36 +60,39 @@ extension Shell {
                 Int32(fileDescriptorMapping.count))!
             }
           }
-          defer { ShwiftSpawnContextDestroy(spawnContext) }
 
-          for (source, target) in fileDescriptorMapping {
-            ShwiftSpawnContextAddFileDescriptorMapping(spawnContext, source.rawValue, target.rawValue)
-          }
-
-          executable.path.withPlatformString { path in
-            ShwiftSpawnContextAddArgument(spawnContext, path)
-          }
-          for argument in arguments {
-            argument.withCString { argument in
-              ShwiftSpawnContextAddArgument(spawnContext, argument)
+          /// Use a closure to make sure no errors are thrown before we can complete the invocation
+          process = await {
+            for (source, target) in fileDescriptorMapping {
+              ShwiftSpawnInvocationAddFileDescriptorMapping(invocation, source.rawValue, target.rawValue)
             }
-          }
-          
-          for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
-            ShwiftSpawnContextAddEnvironmentEntry(spawnContext, "\(key)=\(value)")
-          }
-          
-          process = try! await monitorFileDescriptor { monitor in
-            Process(id: Process.ID(rawValue: ShwiftSpawn(spawnContext, monitor.descriptor.rawValue))!)
-          }
-          let outcome = ShwiftSpawnContextGetOutcome(spawnContext)
-          guard outcome.isSuccess else {
-            let failure = outcome.payload.failure
+
+            executable.path.withPlatformString { path in
+              ShwiftSpawnInvocationAddArgument(invocation, path)
+            }
+            for argument in arguments {
+              argument.withCString { argument in
+                ShwiftSpawnInvocationAddArgument(invocation, argument)
+              }
+            }
+            
+            for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
+              ShwiftSpawnInvocationAddEnvironmentEntry(invocation, "\(key)=\(value)")
+            }
+
+            return try! await monitorFileDescriptor { monitor in
+              Process(
+                id: Process.ID(
+                  rawValue: ShwiftSpawnInvocationLaunch(invocation, monitor.descriptor.rawValue))!)
+            }
+          }()
+          var failure = ShwiftSpawnInvocationFailure();
+          guard ShwiftSpawnInvocationComplete(invocation, &failure) else {
             throw Process.SpawnError(
               file: String(cString: failure.file),
               line: failure.line,
               returnValue: failure.returnValue,
-              errorNumber: failure.error)
+              errorNumber: failure.errorNumber)
           }
           #endif
         }
