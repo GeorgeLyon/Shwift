@@ -31,7 +31,8 @@ import SystemPackage
       "PREFIX: \(line)"
     } | head("-n2")
     
-    try await Task.sleep(nanoseconds: 30_000_000)
+    /// Sleep so we can validate memory usage doesn't grow as a result of `cat /dev/urandom`
+    try await Task.sleep(nanoseconds: 10_000_000_000)
   }
 }
 
