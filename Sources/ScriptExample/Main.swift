@@ -2,6 +2,8 @@
 import Script
 import SystemPackage
 
+import Foundation
+
 @main struct Main: Script {
   func run() async throws {
     let echo = try await executable(named: "echo")
