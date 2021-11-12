@@ -61,3 +61,20 @@ extension Shell {
     }
   }
 }
+
+public func builtin<T>(
+  _ operation: @escaping (inout Builtin.Handle) async throws -> T
+) async throws -> T{
+  try await Shell.withCurrent { shell in
+    try await shell.builtin(operation: operation)
+  }
+}
+
+@_disfavoredOverload
+public func builtin<T>(
+  _ operation: @escaping (inout Builtin.Handle) async throws -> T
+) -> Shell._Invocation<T> {
+  Shell._Invocation {
+    try await builtin(operation)
+  }
+}

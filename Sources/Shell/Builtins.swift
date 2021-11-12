@@ -212,7 +212,7 @@ extension Builtin {
    A type which can be used to write to a shell command's standard output or standard error
    */
   public struct Output {
-
+    
     public func withTextOutputStream(_ body: (inout TextOutputStream) -> Void) async throws {
       var stream = TextOutputStream(channel: channel)
       body(&stream)
