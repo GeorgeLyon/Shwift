@@ -1,7 +1,7 @@
 
 import Shell
 import SystemPackage
-import Foundation
+@_implementationOnly import Foundation
 
 // MARK: - Operators
 

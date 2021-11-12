@@ -1,6 +1,5 @@
 
-import class Foundation.FileManager
-import class Foundation.ProcessInfo
+@_implementationOnly import Foundation
 
 extension Shell {
   

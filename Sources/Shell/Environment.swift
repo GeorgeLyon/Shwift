@@ -1,5 +1,6 @@
-import Foundation
 import SystemPackage
+
+@_implementationOnly import Foundation
 
 extension Shell {
 

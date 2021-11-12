@@ -1,4 +1,3 @@
-import Foundation
 import SystemPackage
 
 @_implementationOnly import NIO
@@ -295,63 +294,4 @@ extension Shell {
     }
   }
 
-}
-
-// MARK: - Context
-
-extension Builtin {
-
-  /**
-   Context in which to execut builtin operations
-   */
-  struct Context {
-
-    init() {
-      storage = Self.queue.sync {
-        if let storage = Self.sharedStorage {
-          return storage
-        } else {
-          let storage = Storage()
-          Self.sharedStorage = storage
-          return storage
-        }
-      }
-    }
-
-    /**
-     The returned value is only guaranteed to be valid if the owning `Context` struct is valid (ensuring we maintain a strong reference to `Storage`). As a result, this is only safe to use in the body of the `Shell.builtin` function, since the `Shell` maintains this strong reference.
-     */
-    fileprivate var fileIO: NonBlockingFileIO {
-      storage.fileIO
-    }
-
-    /**
-     The returned value is only guaranteed to be valid if the owning `Context` struct is valid (ensuring we maintain a strong reference to `Storage`). As a result, this is only safe to use in the body of the `Shell.builtin` function, since the `Shell` maintains this strong reference.
-     */
-    fileprivate var eventLoopGroup: EventLoopGroup {
-      storage.eventLoopGroup
-    }
-
-    private let storage: Storage
-
-    /// TODO: Sendable conformance is unchecked until the compiler gets better post Swift 5.5
-    private final class Storage: @unchecked Sendable {
-      let threadPool: NIOThreadPool
-      let eventLoopGroup: MultiThreadedEventLoopGroup
-      let fileIO: NonBlockingFileIO
-
-      init() {
-        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 6)
-        threadPool = NIOThreadPool(numberOfThreads: 6)
-        threadPool.start()
-        fileIO = NonBlockingFileIO(threadPool: threadPool)
-      }
-      deinit {
-        try! eventLoopGroup.syncShutdownGracefully()
-        try! threadPool.syncShutdownGracefully()
-      }
-    }
-    private static let queue = DispatchQueue(label: #fileID)
-    private static weak var sharedStorage: Storage?
-  }
 }

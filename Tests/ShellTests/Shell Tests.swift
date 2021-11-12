@@ -2,8 +2,6 @@ import XCTest
 import SystemPackage
 @testable import Shell
 
-import Foundation
-
 final class ShellTests: XCTestCase {
 
   func testExecutable() throws {
