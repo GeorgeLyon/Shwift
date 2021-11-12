@@ -270,7 +270,15 @@ extension Process {
       if !canBlock {
         flags |= WNOHANG
       }
+      let start = clock()
       let returnValue = waitid(P_PID, id_t(id.rawValue), &info, flags)
+      let end = clock()
+      if end - start > 1 * CLOCKS_PER_SEC {
+        /**
+         We currently do not set `block` because during child process termination the `monitor` file descriptor is not closed atomically with the child process becoming waitable. Normally, this shouldn't be an issue but misbehaved children could cause a problem by closing the `monitor` early and not terminating. If this becomes an issues we should first wait with `WNOHANG` and if the wait fails delegate to a helper thread which will poll until the process is terminated (polling would be preferable to blocking because then we can support an abitrary number of child processes without creating a thread explosion).
+         */
+        print("\(#filePath):\(#line) warning: Process \(id.rawValue) waited for longer than 1 second for proces termination.")
+      }
       guard returnValue == 0 else {
         throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
       }
