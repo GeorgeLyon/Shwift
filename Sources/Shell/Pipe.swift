@@ -32,7 +32,21 @@ extension Shell {
         return try await destination(destinationShell)
       }()
       
-      return (try await sourceOutcome, try await destinationOutcome)
+      let sourceResult: Result<SourceOutcome, Error>
+      do {
+        sourceResult = .success(try await sourceOutcome)
+      } catch {
+        sourceResult = .failure(error)
+      }
+
+      let destinationResult: Result<DestinationOutcome, Error>
+      do {
+        destinationResult = .success(try await destinationOutcome)
+      } catch {
+        destinationResult = .failure(error)
+      }
+
+      return (try sourceResult.get(), try destinationResult.get())
     }
   }
 }
