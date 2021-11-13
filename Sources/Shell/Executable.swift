@@ -25,7 +25,8 @@ extension Shell {
       public let name: String
     }
     
-    fileprivate init(path: FilePath) {
+    public init(path: FilePath) {
+      precondition(path.lastComponent?.string != nil)
       self.path = path
     }
   }
