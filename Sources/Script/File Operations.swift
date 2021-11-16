@@ -1,45 +1,64 @@
 
-import Shell
+import Shwift
 import SystemPackage
 @_implementationOnly import Foundation
 
 // MARK: - Operators
 
-public func > (source: Shell._Invocation<Void>, path: FilePath) async throws {
-  try await source | Shell._Invocation { shell in
-    try await shell.write(to: path)
+public func > (source: Shell.PipableCommand<Void>, path: FilePath) async throws {
+  try await source | Shell.PipableCommand {
+    try await Shell.invoke { shell, invocation in
+      let absolutePath = shell.workingDirectory.pushing(path)
+      try await Builtin.write(
+        invocation.standardOutput,
+        to: absolutePath,
+        in: invocation.context)
+    }
   }
 }
 
 @_disfavoredOverload
-public func > (source: Shell._Invocation<Void>, path: FilePath) -> Shell._Invocation<Void> {
-  Shell._Invocation {
+public func > (source: Shell.PipableCommand<Void>, path: FilePath) -> Shell.PipableCommand<Void> {
+  Shell.PipableCommand {
     try await source > path
   }
 }
 
-public func >> (source: Shell._Invocation<Void>, path: FilePath) async throws {
-  try await source | Shell._Invocation { shell in
-    try await shell.write(to: path, append: true)
+public func >> (source: Shell.PipableCommand<Void>, path: FilePath) async throws {
+  try await source | Shell.PipableCommand {
+    try await Shell.invoke { shell, invocation in
+      let absolutePath = shell.workingDirectory.pushing(path)
+      try await Builtin.write(
+        invocation.standardOutput,
+        to: absolutePath,
+        append: true,
+        in: invocation.context)
+    }
   }
 }
 
 @_disfavoredOverload
-public func >> (source: Shell._Invocation<Void>, path: FilePath) -> Shell._Invocation<Void> {
-  Shell._Invocation {
+public func >> (source: Shell.PipableCommand<Void>, path: FilePath) -> Shell.PipableCommand<Void> {
+  Shell.PipableCommand {
     try await source >> path
   }
 }
 
-public func < <T>(destination: Shell._Invocation<T>, path: FilePath) async throws -> T {
-  try await Shell._Invocation { shell in
-    try await shell.read(from: path)
+public func < <T>(destination: Shell.PipableCommand<T>, path: FilePath) async throws -> T {
+  try await Shell.PipableCommand {
+    try await Shell.invoke { shell, invocation in
+      let absolutePath = shell.workingDirectory.pushing(path)
+      return try await Builtin.read(
+        from: absolutePath,
+        to: invocation.standardInput,
+        in: invocation.context)
+    }
   } | destination
 }
 
 @_disfavoredOverload
-public func < <T>(destination: Shell._Invocation<T>, path: FilePath) -> Shell._Invocation<T> {
-  Shell._Invocation {
+public func < <T>(destination: Shell.PipableCommand<T>, path: FilePath) -> Shell.PipableCommand<T> {
+  Shell.PipableCommand {
     try await destination < path
   }
 }
@@ -48,8 +67,12 @@ public func < <T>(destination: Shell._Invocation<T>, path: FilePath) -> Shell._I
 
 public func contents(of path: FilePath) async throws -> String {
   try await outputOf {
-    try await Shell.withCurrent { shell in
-      try await shell.read(from: path)
+    try await Shell.invoke { shell, invocation in
+      let absolutePath = shell.workingDirectory.pushing(path)
+      return try await Builtin.read(
+        from: absolutePath,
+        to: invocation.standardInput,
+        in: invocation.context)
     }
   }
 }
@@ -61,10 +84,8 @@ public func write(
   try await echo(value) > path
 }
 
-public func item(at path: FilePath) async throws -> Shell.Item {
-  try await Shell.withCurrent { shell in
-    Shell.Item(path: shell.workingDirectory.pushing(path))
-  }
+public func item(at path: FilePath) -> Shell.Item {
+  Shell.Item(path: Shell.current.workingDirectory.pushing(path))
 }
 
 extension Shell {

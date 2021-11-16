@@ -82,8 +82,8 @@ enum PosixSpawn {
       })
     }
     
-    public mutating func addDuplicate(_ source: FileDescriptor, as target: FileDescriptor) throws {
-      try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target.rawValue))
+    public mutating func addDuplicate(_ source: FileDescriptor, as target: CInt) throws {
+      try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target))
     }
     
     public init(rawValue: posix_spawn_file_actions_t?) {
@@ -93,21 +93,18 @@ enum PosixSpawn {
     
   }
   
-  public static func spawn<Environment: Sequence>(
+  public static func spawn(
     _ path: FilePath,
     arguments: [String],
-    environment: Environment,
+    environment: [String],
     fileActions: inout FileActions,
     attributes: inout Attributes
-  ) throws -> pid_t
-  where
-    Environment.Element == (key: String, value: String)
-  {
+  ) throws -> pid_t {
     var pid = pid_t()
     
     let cArguments = arguments.map { $0.withCString(strdup)! }
     defer { cArguments.forEach { $0.deallocate() } }
-    let cEnvironment = environment.map { strdup("\($0.key)=\($0.value)")! }
+    let cEnvironment = environment.map { $0.withCString(strdup)! }
     defer { cEnvironment.forEach { $0.deallocate() } }
     
     try path.withPlatformString { path in

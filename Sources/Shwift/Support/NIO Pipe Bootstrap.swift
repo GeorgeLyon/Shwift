@@ -8,8 +8,8 @@ extension NIOPipeBootstrap {
    Duplicates the provided file descriptors and creates a channel with the specified input and output. If creating the channel fails, both duplicate descriptors are closed. The caller is responsible for ensuring `inputDescriptor` and `outputDescriptor` are closed.
    */
   func duplicating(
-    inputDescriptor: FileDescriptor,
-    outputDescriptor: FileDescriptor
+    inputDescriptor: SystemPackage.FileDescriptor,
+    outputDescriptor: SystemPackage.FileDescriptor
   ) async throws -> Channel {
     let input = try inputDescriptor.duplicate()
     do {

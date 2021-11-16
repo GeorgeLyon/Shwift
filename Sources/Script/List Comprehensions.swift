@@ -1,20 +1,22 @@
 
-import Shell
+import Shwift
 
 /**
  By default, shell output is processed as a list of lines
  */
 
-public func map(transform: @escaping (String) async throws -> String) -> Shell._Invocation<Void> {
+public func map(transform: @escaping (String) async throws -> String) -> Shell.PipableCommand<Void> {
   compactMap(transform: transform)
 }
 
-public func compactMap(transform: @escaping (String) async throws -> String?) -> Shell._Invocation<Void> {
-  Shell._Invocation { shell in
-    try await shell.builtin { handle in
-      for try await line in handle.input.lines.compactMap(transform) {
-        try await handle.output.withTextOutputStream { stream in
-          print(line, to: &stream)
+public func compactMap(transform: @escaping (String) async throws -> String?) -> Shell.PipableCommand<Void> {
+  Shell.PipableCommand {
+    try await Shell.invoke { shell, invocation in
+      try await invocation.builtin { channel in
+        for try await line in channel.input.lines.compactMap(transform) {
+          try await channel.output.withTextOutputStream { stream in
+            print(line, to: &stream)
+          }
         }
       }
     }
@@ -24,10 +26,12 @@ public func compactMap(transform: @escaping (String) async throws -> String?) ->
 public func reduce<T>(
   into initialResult: T,
   _ updateAccumulatingResult: @escaping (inout T, String) async throws -> Void
-) -> Shell._Invocation<T> {
-  Shell._Invocation { shell in
-    try await shell.builtin { handle in
-      try await handle.input.lines.reduce(into: initialResult, updateAccumulatingResult)
+) -> Shell.PipableCommand<T> {
+  Shell.PipableCommand {
+    try await Shell.invoke { _, invocation in
+      try await invocation.builtin { channel in
+        try await channel.input.lines.reduce(into: initialResult, updateAccumulatingResult)
+      }
     }
   }
 }
@@ -35,10 +39,12 @@ public func reduce<T>(
 public func reduce<T>(
   _ initialResult: T,
   _ nextPartialResult: @escaping (T, String) async throws -> T
-) -> Shell._Invocation<T> {
-  Shell._Invocation { shell in
-    try await shell.builtin { handle in
-      try await handle.input.lines.reduce(initialResult, nextPartialResult)
+) -> Shell.PipableCommand<T> {
+  Shell.PipableCommand {
+    try await Shell.invoke { _, invocation in
+      try await invocation.builtin { channel in
+        try await channel.input.lines.reduce(initialResult, nextPartialResult)
+      }
     }
   }
 }

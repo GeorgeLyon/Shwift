@@ -9,7 +9,7 @@ let package = Package(
   ],
   products: [
     .library(name: "Script", targets: ["Script"]),
-    .library(name: "Shell", targets: ["Shell"]),
+    .library(name: "Shwift", targets: ["Shwift"]),
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
@@ -18,7 +18,7 @@ let package = Package(
   ],
   targets: [
     .target(
-      name: "Shell",
+      name: "Shwift",
       dependencies: [
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "NIO", package: "swift-nio"),
@@ -30,7 +30,7 @@ let package = Package(
     .target(
       name: "Script",
       dependencies: [
-        "Shell",
+        "Shwift",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]),
     
@@ -41,8 +41,8 @@ let package = Package(
       ]
     ),
     .testTarget(
-      name: "ShellTests",
-      dependencies: ["Shell"],
+      name: "ShwiftTests",
+      dependencies: ["Shwift"],
       resources: [
         .copy("Cat.txt")
       ]),

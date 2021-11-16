@@ -1,5 +1,6 @@
 
-import Shell
+import Shwift
+import SystemPackage
 
 // MARK: - Echo
 
@@ -11,12 +12,9 @@ import Shell
 public func echo(
   _ items: Any...,
   separator: String = " ",
-  terminator: String = "\n",
-  to outputChannel: Shell.OutputChannel = .output
+  terminator: String = "\n"
 ) async throws {
-  try await Shell.withCurrent { shell in
-    try await shell.echo(items: items, separator: separator, terminator: terminator, to: outputChannel)
-  }
+  try await echo(items: items, separator: separator, terminator: terminator)
 }
 
 /**
@@ -28,30 +26,22 @@ public func echo(
 public func echo(
   _ items: Any...,
   separator: String = " ",
-  terminator: String = "\n",
-  to outputChannel: Shell.OutputChannel = .output
-) -> Shell._Invocation<Void> {
-  Shell._Invocation { shell in
-    try await shell.echo(items: items, separator: separator, terminator: terminator, to: outputChannel)
+  terminator: String = "\n"
+) -> Shell.PipableCommand<Void> {
+  Shell.PipableCommand {
+    try await echo(items: items, separator: separator, terminator: terminator)
   }
 }
 
-extension Shell {
-  fileprivate func echo(
-    items: [Any],
-    separator: String = " ",
-    terminator: String = "\n",
-    to outputChannel: Shell.OutputChannel = .output
-  ) async throws {
-    try await builtin { handle in
-      let target: Builtin.Output
-      switch outputChannel {
-      case .output:
-        target = handle.output
-      case .error:
-        target = handle.error
-      }
-      try await target.withTextOutputStream { stream in
+private func echo(
+  items: [Any],
+  separator: String = " ",
+  terminator: String = "\n"
+) async throws {
+  try await Shell.invoke { shell, invocation in
+    try await invocation.builtin { channel in
+      try await channel.output.withTextOutputStream { stream in
+        /// We can't use `print` because it does not accept an array
         items
           .flatMap { [String(describing: $0), separator] }
           .dropLast()
@@ -62,19 +52,35 @@ extension Shell {
   }
 }
 
-public func builtin<T>(
-  _ operation: @escaping (inout Builtin.Handle) async throws -> T
-) async throws -> T{
-  try await Shell.withCurrent { shell in
-    try await shell.builtin(operation: operation)
-  }
-}
+// MARK: - Cat
 
-@_disfavoredOverload
-public func builtin<T>(
-  _ operation: @escaping (inout Builtin.Handle) async throws -> T
-) -> Shell._Invocation<T> {
-  Shell._Invocation {
-    try await builtin(operation)
+public func cat(to output: Output) async throws {
+  try await Shell.invoke { _, invocation in
+    try await output.withFileDescriptor(in: invocation.context) { output in
+      struct Stream: TextOutputStream {
+        let fileDescriptor: FileDescriptor
+        var result: Result<Void, Error> = .success(())
+        mutating func write(_ string: String) {
+          guard case .success = result else {
+            return
+          }
+          var mutableString = string
+          do {
+            _ = try mutableString.withUTF8 { buffer in
+              try fileDescriptor.write(UnsafeRawBufferPointer(buffer))
+            }
+          } catch {
+            result = .failure(error)
+          }
+        }
+      }
+      var stream = Stream(fileDescriptor: output)
+      try await invocation.builtin { handle in
+        for try await line in handle.input.lines {
+          print(line, to: &stream)
+          try stream.result.get()
+        }
+      }
+    }
   }
 }
