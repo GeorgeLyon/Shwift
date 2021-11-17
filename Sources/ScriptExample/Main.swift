@@ -53,7 +53,7 @@ import Script
           try await withThrowingTaskGroup(of: Void.self) { group in
             for j in 0..<50 {
               group.addTask {
-                try await echo("\(i),\(j):", "Foo", "Bar") | sed("s/Bar/Baz/")
+                try await echo("\(i),\(j):", "Foo", "Bar") | sed("s/Bar/Baz/") | map { $0.replacingOccurrences(of: "Baz", with: "Baz!") }
               }
             }
             for try await _ in group { }

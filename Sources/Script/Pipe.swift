@@ -6,7 +6,12 @@ public func |<T> (
   source: Shell.PipableCommand<Void>,
   destination: Shell.PipableCommand<T>
 ) async throws -> T {
-  try await pipe(.output, of: source.body, to: destination.body).destination
+  try await pipe(
+    .output, 
+    of: {
+      try? await source.body()
+    }, 
+    to: destination.body).destination
 }
 
 @discardableResult
