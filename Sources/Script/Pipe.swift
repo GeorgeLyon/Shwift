@@ -6,19 +6,7 @@ public func |<T> (
   source: Shell.PipableCommand<Void>,
   destination: Shell.PipableCommand<T>
 ) async throws -> T {
-  try await Shell.invoke { shell, invocation in
-    try await Builtin.pipe(
-      { output in
-        try await subshell(
-          standardOutput: .unmanaged(output),
-          operation: source.body)
-      },
-      to: { input in
-        try await subshell(
-          standardInput: .unmanaged(input),
-          operation: destination.body)
-      }).destination
-  }
+  try await pipe(.output, of: source.body, to: destination.body).destination
 }
 
 @discardableResult
@@ -32,21 +20,21 @@ public func |<T> (
   }
 }
 
-public func pipe<T>(
+public func pipe<SourceOutcome, DestinationOutcome>(
   _ outputChannel: Shell.OutputChannel,
-  of source: () async throws -> Void,
-  to destination: () async throws -> T
-) async throws -> T {
+  of source: () async throws -> SourceOutcome,
+  to destination: () async throws -> DestinationOutcome
+) async throws -> (source: SourceOutcome, destination: DestinationOutcome) {
   try await Shell.invoke { shell, invocation in
     try await Builtin.pipe(
       { output in
         switch outputChannel {
         case .output:
-          try await subshell(
+          return try await subshell(
             standardOutput: .unmanaged(output),
             operation: source)
         case .error:
-          try await subshell(
+          return try await subshell(
             standardError: .unmanaged(output),
             operation: source)
         }
@@ -55,7 +43,7 @@ public func pipe<T>(
         try await subshell(
           standardInput: .unmanaged(input),
           operation: destination)
-      }).destination
+      })
   }
 }
 
