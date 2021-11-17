@@ -325,3 +325,15 @@ public func subshell<T>(
   }
 }
 
+// MARK: - Shell State
+
+/**
+ The current working directory of the current `Script`.
+ */
+var workingDirectory: FilePath {
+  Shell.current.workingDirectory
+}
+
+var environment: Environment {
+  Shell.current.environment
+}
