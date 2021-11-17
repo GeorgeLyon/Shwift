@@ -99,15 +99,15 @@ public struct Process {
           executablePath,
           workingDirectory,
           Int32(arguments.count + 1),
-          Int32(environment.count),
-          Int32(fileDescriptors.count))!
+          Int32(environment.strings.count),
+          Int32(fileDescriptors.entries.count))!
       }
     }
 
     /// Use a closure to make sure no errors are thrown before we can complete the invocation
     id = await {
-      for (new, current) in fileDescriptors {
-        ShwiftSpawnInvocationAddFileDescriptorMapping(invocation, new, current.rawValue)
+      for entry in fileDescriptors.entries {
+        ShwiftSpawnInvocationAddFileDescriptorMapping(invocation, entry.source.rawValue, entry.target)
       }
 
       executablePath.withPlatformString { path in
@@ -119,8 +119,10 @@ public struct Process {
         }
       }
       
-      for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
-        ShwiftSpawnInvocationAddEnvironmentEntry(invocation, "\(key)=\(value)")
+      for entry in environment.strings {
+        entry.withCString { entry in
+          ShwiftSpawnInvocationAddEnvironmentEntry(invocation, entry)
+        }
       }
 
       return try! await context.monitorFileDescriptor { monitor in
