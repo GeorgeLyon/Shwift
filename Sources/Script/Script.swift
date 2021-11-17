@@ -20,28 +20,18 @@ public protocol Script: ParsableCommand {
   func run() async throws
   
   /**
-   The working directory this script runs in.
-   This value is read once prior to calling `run` and saved.
+   The top level shell for this script.
+   This value is read once prior to calling `run` and saved, so the execution of the script will not reflect changes to the root shell that happen after the Script has started running.
    
-   By default, the process working directory.
+   By default, reads the current state of the this process.
    */
-  var rootWorkingDirectory: FilePath { get }
+  var rootShell: Shell { get }
   
   /**
-   The environment the script runs in.
-   This value is read once prior to calling `run` and saved.
-   
-   By default, the process working environment.
+   Scripts can implement to run code before or after the body of the script has run, or post-process any errors encountered
    */
-  var rootEnvironment: Environment { get }
-  
-  /**
-   Run an operation with the IO for this script. `operation` should not write to the `IO` channels after it returns (this allows a script to, for instance, open a file and direct the output there).
-   
-   By default, this uses the standard input, output and error of the proess
-   */
-  func withIO<T>(
-    _ operation: (Shell.IO) async throws -> T
+  func wrapInvocation<T>(
+    _ invocation: () async throws -> T
   ) async throws -> T
   
   /**
@@ -87,21 +77,21 @@ public protocol Script: ParsableCommand {
 
 extension Script {
   
-  public var rootWorkingDirectory: FilePath {
-    FilePath(FileManager.default.currentDirectoryPath)
-  }
-  
-  public var rootEnvironment: Environment { .process }
-  
-  public func withIO<T>(
-    _ operation: (Shell.IO) async throws -> T
-  ) async throws -> T {
-    let io = Shell.IO(
+  public var rootShell: Shell {
+    Shell(
+      workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
+      environment: .process,
       standardInput: .standardInput,
       standardOutput: .standardOutput,
       standardError: .standardError)
-    return try await operation(io)
   }
+  
+  public func wrapInvocation<T>(
+    _ invocation: () async throws -> T
+  ) async throws -> T {
+    try await invocation()
+  }
+  
 }
 
 // MARK: - Logging Default Implementations
@@ -165,13 +155,8 @@ extension Script {
     Task {
       defer { sem.signal() }
       do {
-        let context = Context()
-        try await withIO { io in
-          let shell = Shell(
-            workingDirectory: rootWorkingDirectory,
-            environment: rootEnvironment,
-            io: io,
-            context: context)
+        let shell = self.rootShell
+        try await self.wrapInvocation {
           try await Shell.$hostScript.withValue(self) {
             try await Shell.$taskLocal.withValue(shell) {
               try await run()
@@ -204,25 +189,26 @@ private final class ErrorBox {
 
 public struct Shell {
   
-  public struct IO {
-    public init(
-      standardInput: Input,
-      standardOutput: Output,
-      standardError: Output
-    ) {
-      self.standardInput = standardInput
-      self.standardOutput = standardOutput
-      self.standardError = standardError
-    }
-    
-    public fileprivate(set) var standardInput: Input
-    public fileprivate(set) var standardOutput: Output
-    public fileprivate(set) var standardError: Output
+  public init(
+    workingDirectory: FilePath,
+    environment: Environment,
+    standardInput: Input,
+    standardOutput: Output,
+    standardError: Output
+  ) {
+    self.workingDirectory = workingDirectory
+    self.environment = environment
+    self.standardInput = standardInput
+    self.standardOutput = standardOutput
+    self.standardError = standardError
+    self.context = Context()
   }
   
   fileprivate(set) var workingDirectory: FilePath
   fileprivate(set) var environment: Environment
-  fileprivate var io: IO
+  fileprivate(set) var standardInput: Input
+  fileprivate(set) var standardOutput: Output
+  fileprivate(set) var standardError: Output
   fileprivate let context: Context
   
   struct Invocation {
@@ -253,9 +239,9 @@ public struct Shell {
     _ command: (Shell, Invocation) async throws -> T
   ) async throws -> T {
     let shell: Shell = .taskLocal
-    return try await shell.io.standardInput.withFileDescriptor(in: shell.context) { input in
-      try await shell.io.standardOutput.withFileDescriptor(in: shell.context) { output in
-        try await shell.io.standardError.withFileDescriptor(in: shell.context) { error in
+    return try await shell.standardInput.withFileDescriptor(in: shell.context) { input in
+      try await shell.standardOutput.withFileDescriptor(in: shell.context) { output in
+        try await shell.standardError.withFileDescriptor(in: shell.context) { error in
           try await command(
             shell,
             Invocation(
@@ -294,13 +280,13 @@ public func subshell<T>(
     shell.environment[name] = value
   }
   if let standardInput = standardInput {
-    shell.io.standardInput = standardInput
+    shell.standardInput = standardInput
   }
   if let standardOutput = standardOutput {
-    shell.io.standardOutput = standardOutput
+    shell.standardOutput = standardOutput
   }
   if let standardError = standardError {
-    shell.io.standardError = standardError
+    shell.standardError = standardError
   }
   return try await Shell.$taskLocal.withValue(shell, operation: operation)
 }
