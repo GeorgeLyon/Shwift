@@ -6,9 +6,10 @@ import SystemPackage
 @_implementationOnly import class Foundation.FileManager
 
 /**
- We consider `ArgumentParser` and `Shell` part of our public API
+ We consider the following to be part of our public API
  */
 @_exported import ArgumentParser
+@_exported import struct SystemPackage.FilePath
 @_exported import struct Shwift.Environment
 @_exported import struct Shwift.Input
 @_exported import struct Shwift.Output
