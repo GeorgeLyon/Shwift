@@ -8,6 +8,7 @@ import Script
     case echoToSed
     case echoToMap
     case countLines
+    case writeToFile
     case infiniteInput
     case stressTest
   }
@@ -37,6 +38,8 @@ import Script
         /// Getting a Swift value from an invocation
         let numberOfLines = try await echo("Foo", "Bar") | reduce(into: 0, { count, _ in count += 1 })
         print(numberOfLines)
+      case .writeToFile:
+        try await echo("Foo") > "Test.txt"
       case .infiniteInput:
         /// Dealing with infinite input (error is ignored because `head` throws `EPIPE`)
         try? await cat("/dev/urandom") | xxd() | map { line in

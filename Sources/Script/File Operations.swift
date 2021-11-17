@@ -10,7 +10,7 @@ public func > (source: Shell.PipableCommand<Void>, path: FilePath) async throws 
     try await Shell.invoke { shell, invocation in
       let absolutePath = shell.workingDirectory.pushing(path)
       try await Builtin.write(
-        invocation.standardOutput,
+        invocation.standardInput,
         to: absolutePath,
         in: invocation.context)
     }
