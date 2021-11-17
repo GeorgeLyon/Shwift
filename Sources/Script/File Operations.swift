@@ -29,7 +29,7 @@ public func >> (source: Shell.PipableCommand<Void>, path: FilePath) async throws
     try await Shell.invoke { shell, invocation in
       let absolutePath = shell.workingDirectory.pushing(path)
       try await Builtin.write(
-        invocation.standardOutput,
+        invocation.standardInput,
         to: absolutePath,
         append: true,
         in: invocation.context)
@@ -50,7 +50,7 @@ public func < <T>(destination: Shell.PipableCommand<T>, path: FilePath) async th
       let absolutePath = shell.workingDirectory.pushing(path)
       return try await Builtin.read(
         from: absolutePath,
-        to: invocation.standardInput,
+        to: invocation.standardOutput,
         in: invocation.context)
     }
   } | destination
@@ -71,7 +71,7 @@ public func contents(of path: FilePath) async throws -> String {
       let absolutePath = shell.workingDirectory.pushing(path)
       return try await Builtin.read(
         from: absolutePath,
-        to: invocation.standardInput,
+        to: invocation.standardOutput,
         in: invocation.context)
     }
   }
