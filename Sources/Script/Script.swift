@@ -156,9 +156,9 @@ extension Script {
       defer { sem.signal() }
       do {
         let shell = self.rootShell
-        try await self.wrapInvocation {
-          try await Shell.$hostScript.withValue(self) {
-            try await Shell.$taskLocal.withValue(shell) {
+        try await Shell.$hostScript.withValue(self) {
+          try await Shell.$taskLocal.withValue(shell) {
+            try await self.wrapInvocation {
               try await run()
             }
           }
@@ -316,10 +316,10 @@ public func subshell<T>(
 /**
  The current working directory of the current `Script`.
  */
-var workingDirectory: FilePath {
+public var workingDirectory: FilePath {
   Shell.current.workingDirectory
 }
 
-var environment: Environment {
+public var environment: Environment {
   Shell.current.environment
 }
