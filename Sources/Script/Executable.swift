@@ -56,6 +56,9 @@ public func execute(
 
 public struct Executable {
   public let path: FilePath
+  public init(path: FilePath) {
+    self.path = path
+  }
   
   public func callAsFunction(_ arguments: String?...) async throws {
     try await callAsFunction(arguments: arguments)
@@ -136,9 +139,5 @@ public struct Executable {
     Shell.PipableCommand {
       try await callAsFunction(arguments: arguments)
     }
-  }
-  
-  fileprivate init(path: FilePath) {
-    self.path = path
   }
 }
