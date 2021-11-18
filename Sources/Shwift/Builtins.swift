@@ -1,13 +1,12 @@
-import SystemPackage
-
 @_implementationOnly import NIO
+import SystemPackage
 @_implementationOnly import _NIOConcurrency
 
 /**
  A namespace for types involved in executing builtins
  */
 public enum Builtin {
-  
+
   public struct Channel {
     public let input: Input
     public let output: Output
@@ -16,7 +15,8 @@ public enum Builtin {
     input: SystemPackage.FileDescriptor,
     output: SystemPackage.FileDescriptor,
     in context: Context,
-    _ operation: (Channel) async throws -> T
+    _ operation: (Channel) async throws -> T,
+    file: StaticString = #fileID, line: UInt = #line
   ) async throws -> T {
     let handler = AsyncInboundHandler<ByteBuffer>()
     let nioChannel = try await NIOPipeBootstrap(group: context.eventLoopGroup)
@@ -31,7 +31,8 @@ public enum Builtin {
       .duplicating(
         inputDescriptor: input,
         outputDescriptor: output)
-    let inputBuffers = try! handler
+    let inputBuffers =
+      try! handler
       .prefix(while: { event in
         if case .userInboundEventTriggered(_, ChannelEvent.inputClosed) = event {
           return false
@@ -67,7 +68,14 @@ public enum Builtin {
     } catch {
       result = .failure(error)
     }
-    try await nioChannel.close()
+    do {
+      try await nioChannel.close()
+    } catch ChannelError.alreadyClosed {
+      /**
+       I'm not sure why, but closing the channel occasionally throws an unexpected `alreadyClosed` error. We should get to the bottom of this, but in the meantime we can suppress this ostensibly benign error.
+       */
+      print("\(file):\(line): Received unexpected alreadyClosed")
+    }
     return try result.get()
   }
 }
@@ -133,7 +141,7 @@ extension Builtin {
    A type which can be used to write to a shell command's standard output or standard error
    */
   public struct Output {
-    
+
     public func withTextOutputStream(_ body: (inout TextOutputStream) -> Void) async throws {
       var stream = TextOutputStream(channel: channel)
       body(&stream)
@@ -176,20 +184,23 @@ extension Builtin {
         let fileHandle = try await context.fileIO.openFile(
           path: filePath.string,
           mode: .read,
-          eventLoop: eventLoop)
-          .get()
+          eventLoop: eventLoop
+        )
+        .get()
         let result: Result<Void, Error>
         do {
-          result = .success(try await context.fileIO
-            .readChunked(
-              fileHandle: fileHandle,
-              byteCount: .max,
-              allocator: output.channel.allocator,
-              eventLoop: eventLoop,
-              chunkHandler: { buffer in
-                output.channel.writeAndFlush(buffer)
-              })
-            .get())
+          result = .success(
+            try await context.fileIO
+              .readChunked(
+                fileHandle: fileHandle,
+                byteCount: .max,
+                allocator: output.channel.allocator,
+                eventLoop: eventLoop,
+                chunkHandler: { buffer in
+                  output.channel.writeAndFlush(buffer)
+                }
+              )
+              .get())
         } catch {
           result = .failure(error)
         }
