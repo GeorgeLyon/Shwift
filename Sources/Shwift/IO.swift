@@ -58,6 +58,11 @@ public struct Output {
   public static let standardError = Output(kind: .standardError)
   
   public static let nullDevice = Output(kind: .nullDevice)
+
+  /**
+   A special `Output` which aborts if any input is read.
+   */
+  public static let fatalDevice = Output(kind: .fatalDevice)
   
   /**
    An output backed by an unmanaged file descriptor. It is the caller's responsibility to ensure that this file descriptor remains valid for as long as this input is in use.
@@ -77,6 +82,8 @@ public struct Output {
       return try await operation(.standardError)
     case .nullDevice:
       return try await context.withNullOutputDevice(operation)
+    case .fatalDevice:
+      return try await context.withFatalOutputDevice(operation)
     case .unmanaged(let fileDescriptor):
       return try await operation(fileDescriptor)
     }
@@ -86,6 +93,7 @@ public struct Output {
     case standardOutput
     case standardError
     case nullDevice
+    case fatalDevice
     case unmanaged(FileDescriptor)
   }
   fileprivate let kind: Kind

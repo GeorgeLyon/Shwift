@@ -7,7 +7,8 @@ public final class Context {
   let eventLoopGroup: EventLoopGroup
   let fileIO: NonBlockingFileIO
   private let threadPool: NIOThreadPool
-  private let nullOutputDevice = NullOutputDevice()
+  private let nullOutputDevice = ChannelOutputDevice(handler: NullDeviceHandler())
+  private let fatalOutputDevice = ChannelOutputDevice(handler: FatalDeviceHandler())
   
   public init() {
     eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -35,11 +36,39 @@ public final class Context {
      */
     return try await operation(nullOutputDevice.fileDescriptor(with: eventLoopGroup))
   }
+
+  func withFatalOutputDevice<T>(
+    _ operation: (SystemPackage.FileDescriptor) async throws -> T
+  ) async throws -> T {
+    /**
+     The file descriptor is guaranteed to be valid since we maintain a strong reference to `fatalOutputDevice` for the duration of `operation`.
+     */
+    return try await operation(fatalOutputDevice.fileDescriptor(with: eventLoopGroup))
+  }
 }
 
 // MARK: - Support
 
-private actor NullOutputDevice {
+private final class NullDeviceHandler: ChannelInboundHandler {
+  typealias InboundIn = ByteBuffer
+  func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    /// Ignore
+  }
+}
+
+private final class FatalDeviceHandler: ChannelInboundHandler {
+  typealias InboundIn = ByteBuffer
+  func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    fatalError()
+  }
+}
+
+private actor ChannelOutputDevice<Handler: ChannelInboundHandler> {
+  init(handler: Handler) {
+    self.handler = handler
+  }
+  let handler: Handler
+
   /**
     - Returns: A file descriptor which is guaranteed to be valid as long as the callee is valid
     */
@@ -49,16 +78,10 @@ private actor NullOutputDevice {
     } else {
       let channel: Channel
       let fileDescriptor: SystemPackage.FileDescriptor
-      (channel, fileDescriptor) =  try await SystemPackage.FileDescriptor.withPipe { pipe in
+      (channel, fileDescriptor) =  try await SystemPackage.FileDescriptor.withPipe { [handler] pipe in
         let channel = try await NIOPipeBootstrap(group: group)
-          .channelInitializer { channel in 
-            final class Handler: ChannelInboundHandler {
-              typealias InboundIn = ByteBuffer
-              func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-                /// Ignore
-              }
-            }
-            return channel.pipeline.addHandler(Handler())
+          .channelInitializer { channel in
+            return channel.pipeline.addHandler(handler)
           }
           .duplicating(
             inputDescriptor: pipe.readEnd,
