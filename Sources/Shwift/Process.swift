@@ -46,15 +46,7 @@ public struct Process {
     }
     logger?.willWait(on: process)
     do {
-      let start = clock()
-      try process.wait(allowBlocking: true)
-      let end = clock()
-      if end - start > 1 * CLOCKS_PER_SEC {
-        /**
-         We currently do not set `block` because during child process termination the `monitor` file descriptor is not closed atomically with the child process becoming waitable. Normally, this shouldn't be an issue but misbehaved children could cause a problem by closing the `monitor` early and not terminating. If this becomes an issue we should first wait with `WNOHANG` and if the wait fails delegate to a helper thread which will poll until the process is terminated (polling would be preferable to blocking because then we can support an abitrary number of child processes without creating a thread explosion).
-         */
-        print("\(#filePath):\(#line) warning: \(process) waited for longer than 1 second for termination.")
-      }
+      try await process.wait(in: context)
       logger?.process(process, didTerminateWithError: nil)
     } catch {
       logger?.process(process, didTerminateWithError: error)
@@ -148,7 +140,7 @@ public struct Process {
   /**
    Waits on the process. This call is nonblocking and expects that the process represented by `processID` has already terminated
    */
-  private func wait(allowBlocking: Bool) throws {
+  private func wait(in context: Context) async throws {
     /// Some key paths are different on Linux and macOS
     #if canImport(Darwin)
     let pid = \siginfo_t.si_pid
@@ -159,29 +151,42 @@ public struct Process {
     let sigchldInfo = \siginfo_t._sifields._sigchld
     let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
     #endif
-
+    
     var info = siginfo_t()
-    /**
-     We use a process ID of `0` to detect the case when the child is not in a waitable state.
-     Since we use the control channel to detect termination, this _shouldn't_ happen (unless the child decides to call `close(3)` for some reason).
-     */
-    info[keyPath: pid] = 0
-    do {
-      errno = 0
-      var flags = WEXITED
-      #if canImport(Glibc)
-      flags |= __WALL
-      #endif
-      if !allowBlocking {
-        flags |= WNOHANG
+    while true {
+      /**
+       We use a process ID of `0` to detect the case when the child is not in a waitable state.
+       Since we use the control channel to detect termination, this _shouldn't_ happen (unless the child decides to call `close(3)` for some reason).
+       */
+      info[keyPath: pid] = 0
+      do {
+        errno = 0
+        var flags = WEXITED | WNOHANG
+        #if canImport(Glibc)
+        flags |= __WALL
+        #endif
+        let returnValue = waitid(P_PID, id_t(id.rawValue), &info, flags)
+        guard returnValue == 0 else {
+          throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
+        }
       }
-      let returnValue = waitid(P_PID, id_t(id.rawValue), &info, flags)
-      guard returnValue == 0 else {
-        throw TerminationError.waitFailed(returnValue: returnValue, errno: errno)
+      /**
+       By monitoring a file descriptor to detect when a process has terminated, we introduce the possibility of performing a nonblocking wait on a process before it is actually ready to be waited on. This can happen if we win the race with the kernel setting the child process into a waitable state after the kernel closes the file descriptor we are monitoring (this is rare, but has been observed and should only ever result in a 1 second delay). This could also be caused by unusual behavior in the child process (for instance, iterating over all of its own descriptors and closing the ones it doesn't know about, including the one we use for monitoring; in this case the overhead of polling should still be minimal).
+       */
+      guard info[keyPath: pid] != 0 else {
+        /// Reset `info`
+        info = siginfo_t()
+        /// Wait for 1 second (we can't use `Task.sleep` because we want to wait on the child process even if it was cancelled)
+        let _ : Void = await withCheckedContinuation { continuation in
+          context.eventLoopGroup.next().scheduleTask(in: .seconds(1)) {
+            continuation.resume()
+          }
+        }
+        /// Try `wait` again
+        continue
       }
-    }
-    guard info[keyPath: pid] != 0 else {
-      throw TerminationError.processIsStillRunning
+      /// If we reached this point, the process was successfully waited on
+      break
     }
 
     switch Int(info.si_code) {
@@ -287,11 +292,6 @@ extension Process {
      Waiting on the process failed.
      */
     case waitFailed(returnValue: CInt, errno: CInt)
-
-    /**
-     A non-blocking wait was attempted before the process completed
-     */
-    case processIsStillRunning
 
     /**
      The process terminated successfully, but the termination status was nonzero.
