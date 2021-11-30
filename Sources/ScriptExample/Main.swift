@@ -51,15 +51,15 @@ import Script
 
       case .stressTest:
         for i in 0..<50_000 {
-          //          try await withThrowingTaskGroup(of: Void.self) { group in
-          for j in 0..<50 {
-            //              group.addTask {
-            try await echo("\(i),\(j):", "Foo", "Bar") | sed("s/Bar/Baz/")
-              | map { $0.replacingOccurrences(of: "Baz", with: "Baz!") }
-            //              }
+          try await withThrowingTaskGroup(of: Void.self) { group in
+            for j in 0..<50 {
+              group.addTask {
+                try await echo("\(i),\(j):", "Foo", "Bar") | sed("s/Bar/Baz/")
+                  | map { $0.replacingOccurrences(of: "Baz", with: "Baz!") }
+              }
+            }
+            for try await _ in group { }
           }
-          //            for try await _ in group { }
-          //          }
         }
       }
     }
