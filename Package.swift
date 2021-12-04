@@ -12,6 +12,7 @@ let package = Package(
     .library(name: "Shwift", targets: ["Shwift"]),
   ],
   dependencies: [
+    .package(url: "https://github.com/apple/swift-format", .branch("swift-5.5-branch")),
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-system", .branch("main")),
     .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
@@ -26,18 +27,18 @@ let package = Package(
         .target(name: "CLinuxSupport", condition: .when(platforms: [.linux])),
       ]),
     .target(name: "CLinuxSupport"),
-    
+
     .target(
       name: "Script",
       dependencies: [
         "Shwift",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]),
-    
+
     .executableTarget(
       name: "ScriptExample",
       dependencies: [
-        "Script",
+        "Script"
       ]
     ),
     .testTarget(

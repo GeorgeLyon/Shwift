@@ -1,0 +1,9 @@
+{
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "editor.wordWrapColumn": 100,
+  "editor.wordWrap": "bounded",
+  "files.exclude": {
+    "**/.*": true,
+  },
+}

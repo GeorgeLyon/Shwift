@@ -1,0 +1,52 @@
+name: Check Commit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+
+jobs:
+
+  validate-formatting:
+    name: Validate Formatting
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          # These must match the version of swift specified by `swift-format`
+          branch: swift-5.5-release
+          tag: 5.5-RELEASE
+      - name: Build Formatting Tools
+        run: |
+          swift build --product swift-format
+      - name: Validate swift formatting
+        run: |
+          swift run swift-format \
+            --mode=format \
+            --in-place \
+            --recursive Sources
+          git diff
+          git diff-index --quiet HEAD --
+
+  test:
+    name: Test on Linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            swift:
+              branch: swift-5.5-release
+              tag: 5.5-RELEASE
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: ${{ matrix.swift.branch }}
+          tag: ${{ matrix.swift.tag }}
+      - run: swift build
+      - run: swift test
+      - run: swift run ScriptExample
