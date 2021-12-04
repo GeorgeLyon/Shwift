@@ -1,5 +1,7 @@
 # Shwift
 
+**NOTE:** Shwift is under active development and functionality may change or break without notice.
+
 ## Overview
 
 Shwift is a package which provides tools for shell scripting in Swift. 
