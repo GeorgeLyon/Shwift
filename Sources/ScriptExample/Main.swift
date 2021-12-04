@@ -58,7 +58,7 @@ import Script
                   | map { $0.replacingOccurrences(of: "Baz", with: "Baz!") }
               }
             }
-            for try await _ in group { }
+            for try await _ in group {}
           }
         }
       }

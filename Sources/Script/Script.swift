@@ -1,4 +1,3 @@
-
 import Shwift
 import Dispatch
 import SystemPackage
@@ -19,22 +18,22 @@ import SystemPackage
 
 public protocol Script: ParsableCommand {
   func run() async throws
-  
+
   /**
    The top level shell for this script.
    This value is read once prior to calling `run` and saved, so the execution of the script will not reflect changes to the root shell that happen after the Script has started running.
-   
+
    By default, reads the current state of the this process.
    */
   var rootShell: Shell { get }
-  
+
   /**
    Scripts can implement to run code before or after the body of the script has run, or post-process any errors encountered
    */
   func wrapInvocation<T>(
     _ invocation: () async throws -> T
   ) async throws -> T
-  
+
   /**
    Called just before we attempt to launch a process.
    Can be used for logging.
@@ -43,7 +42,7 @@ public protocol Script: ParsableCommand {
     _ executable: Executable,
     withArguments arguments: [String],
     in workingDirectory: FilePath)
-  
+
   /**
    Called if our attempt to launch an executable failed.
    Can be used for logging.
@@ -53,7 +52,7 @@ public protocol Script: ParsableCommand {
     withArguments arguments: [String],
     in workingDirectory: FilePath,
     dueTo error: Error)
-  
+
   /**
    Called after we have launched a process.
    Can be used for logging.
@@ -63,7 +62,7 @@ public protocol Script: ParsableCommand {
     didLaunchWith executable: Executable,
     arguments: [String],
     in workingDirectory: FilePath)
-  
+
   /**
    Called after a process has terminated.
    Can be used for logging.
@@ -77,7 +76,7 @@ public protocol Script: ParsableCommand {
 }
 
 extension Script {
-  
+
   public var rootShell: Shell {
     Shell(
       workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
@@ -86,19 +85,19 @@ extension Script {
       standardOutput: .standardOutput,
       standardError: .standardError)
   }
-  
+
   public func wrapInvocation<T>(
     _ invocation: () async throws -> T
   ) async throws -> T {
     try await invocation()
   }
-  
+
 }
 
 // MARK: - Logging Default Implementations
 
 extension Script {
-  
+
   /**
    Called just before we attempt to launch a process.
    Can be used for logging.
@@ -107,8 +106,8 @@ extension Script {
     _ executable: Executable,
     withArguments arguments: [String],
     in workingDirectory: FilePath
-  ) { }
-  
+  ) {}
+
   /**
    Called if our attempt to launch an executable failed.
    Can be used for logging.
@@ -118,8 +117,8 @@ extension Script {
     withArguments arguments: [String],
     in workingDirectory: FilePath,
     dueTo error: Error
-  ) { }
-  
+  ) {}
+
   /**
    Called after we have launched a process.
    Can be used for logging.
@@ -129,8 +128,8 @@ extension Script {
     didLaunchWith executable: Executable,
     arguments: [String],
     in workingDirectory: FilePath
-  ) { }
-  
+  ) {}
+
   /**
    Called after a process has terminated.
    Can be used for logging.
@@ -141,14 +140,14 @@ extension Script {
     withArguments arguments: [String],
     in workingDirectory: FilePath,
     didComplete error: Error?
-  ) { }
-  
+  ) {}
+
 }
 
 // MARK: - Adapter for `ParsableCommand`
 
 extension Script {
-  
+
   public func run() throws {
     /// Work around for https://forums.swift.org/t/interaction-between-async-main-and-async-overloads/52171
     let box = ErrorBox()
@@ -179,7 +178,7 @@ extension Script {
       throw error
     }
   }
-  
+
 }
 
 private final class ErrorBox {
@@ -189,7 +188,7 @@ private final class ErrorBox {
 // MARK: - Shell
 
 public struct Shell {
-  
+
   public init(
     workingDirectory: FilePath,
     environment: Environment,
@@ -204,20 +203,20 @@ public struct Shell {
     self.standardError = standardError
     self.context = Context()
   }
-  
+
   fileprivate(set) var workingDirectory: FilePath
   fileprivate(set) var environment: Environment
   fileprivate(set) var standardInput: Input
   fileprivate(set) var standardOutput: Output
   fileprivate(set) var standardError: Output
   fileprivate let context: Context
-  
+
   struct Invocation {
     let standardInput: FileDescriptor
     let standardOutput: FileDescriptor
     let standardError: FileDescriptor
     let context: Context
-    
+
     /**
      Convenience for builtin invocations
      */
@@ -231,11 +230,11 @@ public struct Shell {
         command)
     }
   }
-  
+
   static var current: Shell { taskLocal }
-  
+
   static var scriptForLogging: Script { hostScript }
-  
+
   static func invoke<T>(
     _ command: (Shell, Invocation) async throws -> T
   ) async throws -> T {
@@ -254,13 +253,13 @@ public struct Shell {
       }
     }
   }
-  
+
   @TaskLocal
   fileprivate static var taskLocal: Shell!
-  
+
   @TaskLocal
   fileprivate static var hostScript: Script!
-  
+
 }
 
 // MARK: - Subshell

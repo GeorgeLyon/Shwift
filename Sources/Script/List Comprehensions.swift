@@ -1,15 +1,17 @@
-
 import Shwift
 
 /**
  By default, shell output is processed as a list of lines
  */
 
-public func map(transform: @escaping (String) async throws -> String) -> Shell.PipableCommand<Void> {
+public func map(transform: @escaping (String) async throws -> String) -> Shell.PipableCommand<Void>
+{
   compactMap(transform: transform)
 }
 
-public func compactMap(transform: @escaping (String) async throws -> String?) -> Shell.PipableCommand<Void> {
+public func compactMap(transform: @escaping (String) async throws -> String?)
+  -> Shell.PipableCommand<Void>
+{
   Shell.PipableCommand {
     try await Shell.invoke { shell, invocation in
       try await invocation.builtin { channel in

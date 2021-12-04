@@ -1,22 +1,21 @@
-
 import SystemPackage
 
 public struct Input {
-  
+
   public static let standardInput = Input(kind: .standardInput)
-  
+
   /**
    An input roughly analogous to using the null device (`/dev/null`).
    */
   public static let nullDevice = Input(kind: .nullDevice)
-  
+
   /**
    An input backed by an unmanaged file descriptor. It is the caller's responsibility to ensure that this file descriptor remains valid for as long as this input is in use.
    */
   public static func unmanaged(_ fileDescriptor: SystemPackage.FileDescriptor) -> Input {
     Input(kind: .unmanaged(fileDescriptor))
   }
-  
+
   public func withFileDescriptor<T>(
     in context: Context,
     _ operation: (SystemPackage.FileDescriptor) async throws -> T
@@ -42,7 +41,7 @@ public struct Input {
       return try await operation(fileDescriptor)
     }
   }
-  
+
   fileprivate enum Kind {
     case standardInput
     case nullDevice
@@ -52,25 +51,25 @@ public struct Input {
 }
 
 public struct Output {
-  
+
   public static let standardOutput = Output(kind: .standardOutput)
-  
+
   public static let standardError = Output(kind: .standardError)
-  
+
   public static let nullDevice = Output(kind: .nullDevice)
 
   /**
    A special `Output` which aborts if any input is read.
    */
   public static let fatalDevice = Output(kind: .fatalDevice)
-  
+
   /**
    An output backed by an unmanaged file descriptor. It is the caller's responsibility to ensure that this file descriptor remains valid for as long as this input is in use.
    */
   public static func unmanaged(_ fileDescriptor: SystemPackage.FileDescriptor) -> Output {
     Output(kind: .unmanaged(fileDescriptor))
   }
-  
+
   public func withFileDescriptor<T>(
     in context: Context,
     _ operation: (SystemPackage.FileDescriptor) async throws -> T
@@ -88,7 +87,7 @@ public struct Output {
       return try await operation(fileDescriptor)
     }
   }
-  
+
   fileprivate enum Kind {
     case standardOutput
     case standardError
@@ -98,5 +97,3 @@ public struct Output {
   }
   fileprivate let kind: Kind
 }
-
-

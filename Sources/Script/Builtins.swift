@@ -1,4 +1,3 @@
-
 import Shwift
 import SystemPackage
 
@@ -6,7 +5,7 @@ import SystemPackage
 
 /**
  Prints a set of items to the specified shell output
- 
+
  The API is meant to mirror `Swift.print`.
  */
 public func echo(
@@ -19,7 +18,7 @@ public func echo(
 
 /**
  Prints a set of items to the specified shell output
- 
+
  The API is meant to mirror `Swift.print`.
  */
 @_disfavoredOverload

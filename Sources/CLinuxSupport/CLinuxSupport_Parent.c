@@ -159,7 +159,7 @@ void ShwiftSpawnInvocationAddFileDescriptorMapping(
   int count = invocation->parameters.fileDescriptorMappings.count;
   assert(invocation->parameters.fileDescriptorMappings.capacity >= count + 1);
   for (int i = 0; i < invocation->parameters.fileDescriptorMappings.count; i += 1) {
-    assert(target != invocation->parameters.fileDescriptorMappings.elements[count].target);
+    assert(target != invocation->parameters.fileDescriptorMappings.elements[i].target);
   }
   invocation->parameters.fileDescriptorMappings.elements[count].source = source;
   invocation->parameters.fileDescriptorMappings.elements[count].target = target;

@@ -1,4 +1,3 @@
-
 import Shwift
 import SystemPackage
 
@@ -29,11 +28,11 @@ public func executable(named name: String, required: Bool) async throws -> Execu
 public func execute(_ executableName: String, _ arguments: String?...) async throws {
   try await execute(executableName, arguments: arguments)
 }
-  
+
 public func execute(_ executableName: String, arguments: [String?]) async throws {
   try await executable(named: executableName)(arguments: arguments)
 }
-  
+
 @_disfavoredOverload
 public func execute(
   _ executableName: String,
@@ -41,7 +40,7 @@ public func execute(
 ) async throws -> Shell.PipableCommand<Void> {
   try await execute(executableName, arguments: arguments)
 }
-  
+
 @_disfavoredOverload
 public func execute(
   _ executableName: String,
@@ -59,18 +58,18 @@ public struct Executable {
   public init(path: FilePath) {
     self.path = path
   }
-  
+
   public func callAsFunction(_ arguments: String?...) async throws {
     try await callAsFunction(arguments: arguments)
   }
-  
+
   public func callAsFunction(arguments: [String?]) async throws {
     try await Shell.invoke { shell, invocation in
       struct Logger: ProcessLogger {
         let executable: Executable
         let arguments: [String]
         let shell: Shell
-        
+
         func failedToLaunchProcess(dueTo error: Error) {
           Shell.scriptForLogging
             .didFailToLaunch(
@@ -79,7 +78,7 @@ public struct Executable {
               in: shell.workingDirectory,
               dueTo: error)
         }
-        
+
         func didLaunch(_ process: Process) {
           Shell.scriptForLogging
             .process(
@@ -88,11 +87,11 @@ public struct Executable {
               arguments: arguments,
               in: shell.workingDirectory)
         }
-        
+
         func willWait(on process: Process) {
-      
+
         }
-        
+
         func process(_ process: Process, didTerminateWithError error: Error?) {
           Shell.scriptForLogging
             .process(
@@ -123,17 +122,17 @@ public struct Executable {
           standardError: invocation.standardError),
         logger: Logger(executable: self, arguments: arguments, shell: shell),
         in: invocation.context)
-      
+
     }
   }
-  
+
   @_disfavoredOverload
   public func callAsFunction(_ arguments: String?...) async throws -> Shell.PipableCommand<Void> {
     Shell.PipableCommand {
       try await callAsFunction(arguments: arguments)
     }
   }
-  
+
   @_disfavoredOverload
   public func callAsFunction(arguments: [String?]) async throws -> Shell.PipableCommand<Void> {
     Shell.PipableCommand {

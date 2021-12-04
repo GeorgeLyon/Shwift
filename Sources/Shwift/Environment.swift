@@ -10,7 +10,7 @@ public struct Environment: ExpressibleByDictionaryLiteral {
   public init(dictionaryLiteral elements: (String, String)...) {
     entries = elements.map { Entry(string: "\($0.0)=\($0.1)") }
   }
-  
+
   public static var process: Environment {
     var environment = Environment()
     var entry = environ
@@ -45,15 +45,15 @@ public struct Environment: ExpressibleByDictionaryLiteral {
       }
     }
   }
-  
+
   public mutating func unset(_ name: String) {
     if let index = entries.firstIndex(where: { $0.components.name == name }) {
       entries.remove(at: index)
     }
   }
-  
+
   var strings: [String] { entries.map(\.string) }
-  
+
   private init(entries: [Entry]) {
     self.entries = entries
   }
@@ -64,7 +64,7 @@ public struct Environment: ExpressibleByDictionaryLiteral {
       let value = string[string.index(after: index)...]
       return (name: name, value: value)
     }
-    
+
     let string: String
   }
   private var entries: [Entry]
@@ -75,7 +75,7 @@ public struct Environment: ExpressibleByDictionaryLiteral {
 extension Environment {
 
   public struct SearchResults {
-    
+
     public enum Event {
       case encountered(Error)
       case pathIsNotAbsolute
@@ -83,7 +83,7 @@ extension Environment {
       case found
     }
     public fileprivate(set) var log: [(path: FilePath, event: Event)] = []
-    
+
     public var matches: [FilePath] {
       log.compactMap { entry in
         if case .found = entry.event {
@@ -93,16 +93,16 @@ extension Environment {
         }
       }
     }
-    
-    fileprivate init() { }
+
+    fileprivate init() {}
   }
-  
+
   public var searchPaths: [FilePath] {
     self["PATH"]?
       .components(separatedBy: ":")
       .map(FilePath.init(_:)) ?? []
   }
-  
+
   public func searchForExecutables(named name: String) -> SearchResults {
     let fileManager = FileManager.default
     var results = SearchResults()
@@ -111,10 +111,11 @@ extension Environment {
         results.log.append((searchPath, .pathIsNotAbsolute))
         continue
       }
-      
+
       let candidates: [URL]
       do {
-        candidates = try fileManager
+        candidates =
+          try fileManager
           .contentsOfDirectory(
             at: URL(fileURLWithPath: searchPath.string),
             includingPropertiesForKeys: [.isExecutableKey],
@@ -123,7 +124,7 @@ extension Environment {
         results.log.append((searchPath, .encountered(error)))
         continue
       }
-      
+
       for candidate in candidates {
         let filePath = FilePath(candidate.path)
         do {

@@ -1,9 +1,8 @@
-
 @_implementationOnly import NIO
 import SystemPackage
 
 extension NIOPipeBootstrap {
-  
+
   /**
    Duplicates the provided file descriptors and creates a channel with the specified input and output. If creating the channel fails, both duplicate descriptors are closed. The caller is responsible for ensuring `inputDescriptor` and `outputDescriptor` are closed.
    */
@@ -17,8 +16,9 @@ extension NIOPipeBootstrap {
       do {
         return try await withPipes(
           inputDescriptor: input.rawValue,
-          outputDescriptor: output.rawValue)
-          .get()
+          outputDescriptor: output.rawValue
+        )
+        .get()
         /**
          On success, there is no need to close `input` and `output` as they are now owned by the channel
          */
@@ -31,5 +31,5 @@ extension NIOPipeBootstrap {
       throw error
     }
   }
-  
+
 }
