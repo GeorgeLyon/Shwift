@@ -1,12 +1,11 @@
-
 import SystemPackage
 
 #if canImport(Glibc)
-import Glibc
+  import Glibc
 #endif
 
 extension FileDescriptor {
-  
+
   static func withPipe<T>(
     _ operation: ((readEnd: FileDescriptor, writeEnd: FileDescriptor)) async throws -> T
   ) async throws -> T {
@@ -17,12 +16,12 @@ extension FileDescriptor {
       }
     }
   }
-  
+
   func closeAfter<T>(
     _ operation: () async throws -> T
   ) async throws -> T {
     do {
-      let outcome =  try await operation()
+      let outcome = try await operation()
       try close()
       return outcome
     } catch {
@@ -30,5 +29,5 @@ extension FileDescriptor {
       throw error
     }
   }
-  
+
 }

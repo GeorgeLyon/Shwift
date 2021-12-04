@@ -1,4 +1,3 @@
-
 @_implementationOnly import NIO
 
 import SystemPackage
@@ -9,7 +8,7 @@ public final class Context {
   private let threadPool: NIOThreadPool
   private let nullOutputDevice = ChannelOutputDevice(handler: NullDeviceHandler())
   private let fatalOutputDevice = ChannelOutputDevice(handler: FatalDeviceHandler())
-  
+
   public init() {
     eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     threadPool = NIOThreadPool(numberOfThreads: 6)
@@ -78,7 +77,8 @@ private actor ChannelOutputDevice<Handler: ChannelInboundHandler> {
     } else {
       let channel: Channel
       let fileDescriptor: SystemPackage.FileDescriptor
-      (channel, fileDescriptor) =  try await SystemPackage.FileDescriptor.withPipe { [handler] pipe in
+      (channel, fileDescriptor) = try await SystemPackage.FileDescriptor.withPipe {
+        [handler] pipe in
         let channel = try await NIOPipeBootstrap(group: group)
           .channelInitializer { channel in
             return channel.pipeline.addHandler(handler)

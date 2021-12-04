@@ -1,22 +1,22 @@
-
 import Shwift
 
 @discardableResult
-public func |<T> (
+public func | <T>(
   source: Shell.PipableCommand<Void>,
   destination: Shell.PipableCommand<T>
 ) async throws -> T {
   try await pipe(
-    .output, 
+    .output,
     of: {
       try? await source.body()
-    }, 
-    to: destination.body).destination
+    },
+    to: destination.body
+  ).destination
 }
 
 @discardableResult
 @_disfavoredOverload
-public func |<T> (
+public func | <T>(
   source: Shell.PipableCommand<Void>,
   destination: Shell.PipableCommand<T>
 ) async throws -> Shell.PipableCommand<T> {
@@ -53,14 +53,14 @@ public func pipe<SourceOutcome, DestinationOutcome>(
 }
 
 extension Shell {
-  
+
   public enum OutputChannel {
     case output, error
   }
-  
+
   /**
    We use this type to work around https://bugs.swift.org/browse/SR-14517
-   
+
    Instead of having `|` take async autoclosure arguments, we have it take this type, and provide disfavored overloads which create `PipableCommand<T>` for interesting APIs. Some API doesn't really make sense outside of a pipe expression, and we only provide the `PipableCommand` variant for such API.
    */
   public struct PipableCommand<T> {
@@ -69,5 +69,5 @@ extension Shell {
     }
     let body: () async throws -> T
   }
-  
+
 }
