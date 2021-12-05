@@ -2,15 +2,6 @@
   "object": {
     "pins": [
       {
-        "package": "swift-argument-parser",
-        "repositoryURL": "https://github.com/apple/swift-argument-parser",
-        "state": {
-          "branch": null,
-          "revision": "e1465042f195f374b94f915ba8ca49de24300a0d",
-          "version": "1.0.2"
-        }
-      },
-      {
         "package": "swift-format",
         "repositoryURL": "https://github.com/apple/swift-format",
         "state": {
@@ -24,8 +15,8 @@
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
           "branch": null,
-          "revision": "addf69cfe60376c325397c8926589415576b1dd1",
-          "version": "2.34.0"
+          "revision": "37e7a33de45bac894c0b08b56a2f755ebe4884e6",
+          "version": "2.35.0"
         }
       },
       {
@@ -41,9 +32,9 @@
         "package": "swift-system",
         "repositoryURL": "https://github.com/apple/swift-system",
         "state": {
-          "branch": "main",
-          "revision": "2fa26782e12ce7c559b05ec3865491d1bc514b59",
-          "version": null
+          "branch": null,
+          "revision": "836bc4557b74fe6d2660218d56e3ce96aff76574",
+          "version": "1.1.1"
         }
       }
     ]
