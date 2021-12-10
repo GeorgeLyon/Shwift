@@ -32,6 +32,14 @@ final class ShwiftCoreTests: XCTestCase {
       """)
   }
   
+  func testFailure() throws {
+    try XCTAssertOutput(
+      of: { context, _ in
+        try await Process.run("false", in: context)
+      },
+      is: .failure)
+  }
+  
   func textExecutablePipe() throws {
     try XCTAssertOutput(
       of: { context, output in
@@ -75,9 +83,17 @@ final class ShwiftCoreTests: XCTestCase {
         """)
   }
   
+  private enum Outcome: ExpressibleByStringInterpolation {
+    init(stringLiteral value: String) {
+      self = .success(value)
+    }
+    case success(String)
+    case failure
+  }
+  
   private func XCTAssertOutput(
     of operation: @escaping (Context, FileDescriptor) async throws -> Void,
-    is expected: String?,
+    is expectedOutcome: Outcome,
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
   ) throws {
@@ -85,28 +101,47 @@ final class ShwiftCoreTests: XCTestCase {
     let e2 = expectation(description: "\(function):\(line)")
     let context = Context()
     Task {
-      try await Builtin.pipe(
-        { output in
-          defer { e1.fulfill() }
-          try await operation(context, output)
-        },
-        to: { input in
-          defer { e2.fulfill() }
-          do {
-            try await Output.nullDevice.withFileDescriptor(in: context) { output in
-              try await Builtin.withChannel(input: input, output: output, in: context) { channel in
-                let lines: [String] = try await  channel.input.lines
-                  .reduce(into: [], { $0.append($1) })
-                XCTAssertEqual(
-                  lines.joined(separator: "\n"),
-                  expected,
-                  file: file, line: line)
+      do {
+        let output: String = try await Builtin.pipe(
+          { output in
+            defer { e1.fulfill() }
+            try await operation(context, output)
+          },
+          to: { input in
+            defer { e2.fulfill() }
+            do {
+              return try await Output.nullDevice.withFileDescriptor(in: context) { output in
+                try await Builtin.withChannel(input: input, output: output, in: context) { channel in
+                  return try await  channel.input.lines
+                    .reduce(into: [], { $0.append($1) })
+                    .joined(separator: "\n")
+                }
               }
+            } catch {
+              XCTFail(file: file, line: line)
+              throw error
             }
-          } catch {
-            XCTFail(file: file, line: line)
-          }
-        })
+          })
+          .destination
+        switch expectedOutcome {
+        case .success(let expected):
+          XCTAssertEqual(
+            output,
+            expected,
+            file: file, line: line)
+        case .failure:
+          XCTFail("Succeeded when expecting failure", file: file, line: line)
+        }
+      } catch {
+        switch expectedOutcome {
+        case .success:
+          throw error
+        case .failure:
+          /// Failure was expected
+          break
+        }
+      }
+      
     }
     wait(for: [e1, e2], timeout: 2)
   }
