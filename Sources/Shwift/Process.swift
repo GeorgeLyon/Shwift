@@ -50,6 +50,7 @@ public struct Process {
       logger?.process(process, didTerminateWithError: nil)
     } catch {
       logger?.process(process, didTerminateWithError: error)
+      throw error
     }
   }
 
