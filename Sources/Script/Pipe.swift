@@ -25,6 +25,17 @@ public func | <T>(
   }
 }
 
+/**
+ Special form of `pipe` which allows piping to a builtin like `map`
+ */
+public func pipe<SourceOutcome, DestinationOutcome>(
+  _ outputChannel: Shell.OutputChannel,
+  of source: () async throws -> SourceOutcome,
+  to destination: Shell.PipableCommand<DestinationOutcome>
+) async throws -> (source: SourceOutcome, destination: DestinationOutcome) {
+  try await pipe(outputChannel, of: source, to: { try await destination.body() })
+}
+
 public func pipe<SourceOutcome, DestinationOutcome>(
   _ outputChannel: Shell.OutputChannel,
   of source: () async throws -> SourceOutcome,
