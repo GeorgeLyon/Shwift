@@ -12,26 +12,28 @@ final class ShwiftCoreTests: XCTestCase {
       is: """
         Echo
         """)
-    
+
     try XCTAssertOutput(
       of: { context, standardOutput in
-        try await Process.run("cat", Self.supportFilePath, standardOutput: standardOutput, in: context)
+        try await Process.run(
+          "cat", Self.supportFilePath, standardOutput: standardOutput, in: context)
       },
       is: """
-      Cat
-      """)
+        Cat
+        """)
 
     try XCTAssertOutput(
       of: { context, standardOutput in
         try await Process.run("echo", "Echo", standardOutput: standardOutput, in: context)
-        try await Process.run("cat", Self.supportFilePath, standardOutput: standardOutput, in: context)
+        try await Process.run(
+          "cat", Self.supportFilePath, standardOutput: standardOutput, in: context)
       },
       is: """
-      Echo
-      Cat
-      """)
+        Echo
+        Cat
+        """)
   }
-  
+
   func testFailure() throws {
     try XCTAssertOutput(
       of: { context, _ in
@@ -39,7 +41,7 @@ final class ShwiftCoreTests: XCTestCase {
       },
       is: .failure)
   }
-  
+
   func textExecutablePipe() throws {
     try XCTAssertOutput(
       of: { context, output in
@@ -48,15 +50,17 @@ final class ShwiftCoreTests: XCTestCase {
             try await Process.run("echo", "Input", standardOutput: output, in: context)
           },
           to: { input in
-            try await Process.run("sed", "s/Input/Output/", standardInput: input, standardOutput: output, in: context)
-          }).destination
+            try await Process.run(
+              "sed", "s/Input/Output/", standardInput: input, standardOutput: output, in: context)
+          }
+        ).destination
       },
       is: """
-      Echo
-      Cat
-      """)
+        Echo
+        Cat
+        """)
   }
-  
+
   func testBuiltinOutput() throws {
     try XCTAssertOutput(
       of: { context, output in
@@ -69,8 +73,8 @@ final class ShwiftCoreTests: XCTestCase {
         }
       },
       is: """
-      Builtin (interpolated)
-      """)
+        Builtin (interpolated)
+        """)
   }
 
   func testReadFromFile() throws {
@@ -82,7 +86,7 @@ final class ShwiftCoreTests: XCTestCase {
         Cat
         """)
   }
-  
+
   private enum Outcome: ExpressibleByStringInterpolation {
     init(stringLiteral value: String) {
       self = .success(value)
@@ -90,7 +94,7 @@ final class ShwiftCoreTests: XCTestCase {
     case success(String)
     case failure
   }
-  
+
   private func XCTAssertOutput(
     of operation: @escaping (Context, FileDescriptor) async throws -> Void,
     is expectedOutcome: Outcome,
@@ -111,8 +115,9 @@ final class ShwiftCoreTests: XCTestCase {
             defer { e2.fulfill() }
             do {
               return try await Output.nullDevice.withFileDescriptor(in: context) { output in
-                try await Builtin.withChannel(input: input, output: output, in: context) { channel in
-                  return try await  channel.input.lines
+                try await Builtin.withChannel(input: input, output: output, in: context) {
+                  channel in
+                  return try await channel.input.lines
                     .reduce(into: [], { $0.append($1) })
                     .joined(separator: "\n")
                 }
@@ -121,8 +126,9 @@ final class ShwiftCoreTests: XCTestCase {
               XCTFail(file: file, line: line)
               throw error
             }
-          })
-          .destination
+          }
+        )
+        .destination
         switch expectedOutcome {
         case .success(let expected):
           XCTAssertEqual(
@@ -141,11 +147,11 @@ final class ShwiftCoreTests: XCTestCase {
           break
         }
       }
-      
+
     }
     wait(for: [e1, e2], timeout: 2)
   }
-  
+
   private static let supportFilePath = Bundle.module.path(forResource: "Cat", ofType: "txt")!
 }
 
