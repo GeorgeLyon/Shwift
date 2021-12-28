@@ -58,7 +58,7 @@ private final class NullDeviceHandler: ChannelInboundHandler {
 private final class FatalDeviceHandler: ChannelInboundHandler {
   typealias InboundIn = ByteBuffer
   func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-    fatalError()
+    fatalError(String(buffer: unwrapInboundIn(data)))
   }
 }
 
