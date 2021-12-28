@@ -190,6 +190,11 @@ public struct Process {
       break
     }
 
+    /**
+     If the task has been cancelled, we want cancellation to supercede the temination status of the executable (often a SIGTERM).
+     */
+    try Task.checkCancellation()
+
     switch Int(info.si_code) {
     case Int(CLD_EXITED):
       let terminationStatus = info[keyPath: sigchldInfo].si_status
