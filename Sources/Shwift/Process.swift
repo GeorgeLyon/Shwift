@@ -12,6 +12,9 @@ import SystemPackage
 
 public struct Process {
 
+  /**
+   Runs an executable in a separate process, returns once that process terminates.
+   */
   public static func run(
     executablePath: FilePath,
     arguments: [String],
@@ -21,13 +24,39 @@ public struct Process {
     logger: ProcessLogger? = nil,
     in context: Context
   ) async throws {
-    let process = try! await context.monitorFileDescriptor { monitor -> Process in
+    try await launch(
+      executablePath: executablePath, 
+      arguments: arguments, 
+      environment: environment, 
+      workingDirectory: workingDirectory, 
+      fileDescriptors: fileDescriptors, 
+      logger: logger, 
+      in: context)
+      .value
+  }
+
+  /**
+   Runs an executable in a separate process, and returns once that process has been launched.
+   - Returns: A task which represents the running of the external process.
+   */
+  public static func launch(
+    executablePath: FilePath,
+    arguments: [String],
+    environment: Environment,
+    workingDirectory: FilePath,
+    fileDescriptors: FileDescriptorMapping,
+    logger: ProcessLogger? = nil,
+    in context: Context
+  ) async throws -> Task<Void, Error> {
+    let process: Process
+    let monitor: FileDescriptorMonitor
+    (process, monitor) = try await FileDescriptorMonitor.create(in: context) { monitoredDescriptor in
       do {
         var fileDescriptors = fileDescriptors
         /// Map the monitored descriptor to the lowest unmapped target descriptor
         let mappedFileDescriptors = Set(fileDescriptors.entries.map(\.target))
         fileDescriptors.addMapping(
-          from: monitor.descriptor,
+          from: monitoredDescriptor,
           to: (0...).first(where: { !mappedFileDescriptors.contains($0) })!)
         let process = try await Process(
           executablePath: executablePath,
@@ -37,20 +66,26 @@ public struct Process {
           fileDescriptors: fileDescriptors,
           context: context)
         logger?.didLaunch(process)
-        monitor.cancellationHandler = { process.terminate() }
         return process
       } catch {
         logger?.failedToLaunchProcess(dueTo: error)
         throw error
       }
     }
-    logger?.willWait(on: process)
-    do {
-      try await process.wait(in: context)
-      logger?.process(process, didTerminateWithError: nil)
-    } catch {
-      logger?.process(process, didTerminateWithError: error)
-      throw error
+    return Task {
+      try await withTaskCancellationHandler(
+        handler: { process.terminate() }, 
+        operation: {
+          try await monitor.wait()
+          logger?.willWait(on: process)
+          do {
+            try await process.wait(in: context)
+            logger?.process(process, didTerminateWithError: nil)
+          } catch {
+            logger?.process(process, didTerminateWithError: error)
+            throw error
+          }
+        })
     }
   }
 
@@ -118,9 +153,13 @@ public struct Process {
         }
       }
 
-      return try! await context.monitorFileDescriptor { monitor in
-        ID(rawValue: ShwiftSpawnInvocationLaunch(invocation, monitor.descriptor.rawValue))!
+      let id: Process.ID
+      let monitor: FileDescriptorMonitor
+      (id, monitor) = try! await FileDescriptorMonitor.create(in: context) { monitoredDescriptor in
+        ID(rawValue: ShwiftSpawnInvocationLaunch(invocation, monitoredDescriptor.rawValue))!
       }
+      try! await monitor.wait()
+      return id
     }()
     var failure = ShwiftSpawnInvocationFailure();
     guard ShwiftSpawnInvocationComplete(invocation, &failure) else {
@@ -315,55 +354,36 @@ extension Process {
 // MARK: - File Descriptor Monitor
 
 private struct FileDescriptorMonitor {
-  /**
-    The descriptor being monitored. `monitorFileDescriptor` will wait on this descriptor an any duplicates to close before returning.
-    */
-  let descriptor: SystemPackage.FileDescriptor
-  
-  /**
-    A closure which runs if the task is cancelled before `monitorFileDescriptor` returns
-    */
-  var cancellationHandler: (() -> Void)?
-}
-  
-private extension Context {
-  /**
-   Creates a file descriptor which is valid during `operation`, then waits for that file descriptor and any duplicates to close (including duplicates created as the result of spawning a new process).
-   */
-  func monitorFileDescriptor<T>(
-    _ operation: (inout FileDescriptorMonitor) async throws -> T
-  ) async throws -> T {
-    let future: EventLoopFuture<T>
-    let unsafeMonitor: FileDescriptorMonitor
-    (future, unsafeMonitor) = try await FileDescriptor.withPipe { pipe in
-      let channel = try await withNullOutputDevice { nullOutput in
-        try await NIOPipeBootstrap(group: eventLoopGroup)
+
+  static func create<T>(
+    in context: Context, 
+    _ forwardMonitoredDescriptor: (SystemPackage.FileDescriptor) async throws -> T
+  ) async throws -> (outcome: T, monitor: FileDescriptorMonitor) {
+    let future: EventLoopFuture<Void>
+    let outcome: T
+    (future, outcome) = try await FileDescriptor.withPipe { pipe in
+      let channel = try await context.withNullOutputDevice { nullOutput in
+        try await NIOPipeBootstrap(group: context.eventLoopGroup)
           .channelInitializer { channel in
-            channel.pipeline.addHandler(MonitorHandler())
+            channel.pipeline.addHandler(Handler())
           }
           .duplicating(
             inputDescriptor: pipe.readEnd,
             outputDescriptor: nullOutput)
       }
-      var monitor = FileDescriptorMonitor(descriptor: pipe.writeEnd)
-      let outcome = try await operation(&monitor)
-      let future = channel.closeFuture.map { _ in outcome }
-      return (future, monitor)
+      let outcome = try await forwardMonitoredDescriptor(pipe.writeEnd)
+      return (channel.closeFuture, outcome)
     }
-    /// `unsafeMonitor.descriptor` may be invalid at this point
-    let outcome: T = await withTaskCancellationHandler(
-      handler: {
-        unsafeMonitor.cancellationHandler?()
-      },
-      operation: {
-        /// `future` can only be awaited on after `withPipe` returns, closing the temporary descriptors.
-        let outcome = try! await future.get()
-        return outcome
-      })
-    return outcome
+    return (outcome, FileDescriptorMonitor(future: future))
   }
-  
-  private final class MonitorHandler: ChannelInboundHandler {
+
+  func wait() async throws {
+    try await future.get()
+  }
+
+  private let future: EventLoopFuture<Void>
+
+  private final class Handler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
       /**
