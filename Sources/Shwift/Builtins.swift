@@ -131,10 +131,10 @@ extension Builtin {
       Lines(byteBuffers: byteBuffers)
     }
 
-    fileprivate typealias ByteBuffers = AsyncCompactMapSequence<
+    typealias ByteBuffers = AsyncCompactMapSequence<
       AsyncPrefixWhileSequence<AsyncInboundHandler<ByteBuffer>>, ByteBuffer
     >
-    fileprivate let byteBuffers: ByteBuffers
+    let byteBuffers: ByteBuffers
   }
 
   /**
