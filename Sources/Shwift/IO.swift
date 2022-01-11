@@ -63,7 +63,7 @@ public struct Output {
    */
   public static let fatalDevice = Output(kind: .fatalDevice)
 
-  public static func append(to recording: Recorder.Recording) -> Output {
+  public static func record(to recording: Recorder.Recording) -> Output {
     Output(kind: .recording(recording))
   }
 
