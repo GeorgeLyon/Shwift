@@ -63,6 +63,43 @@ public struct Output {
    */
   public static let fatalDevice = Output(kind: .fatalDevice)
 
+  public static func record(to recording: Recorder.Recording) -> Output {
+    Output(kind: .recording(recording))
+  }
+
+  public actor Recorder {
+
+    public func write<T: TextOutputStream>(to stream: inout T) async {
+      for (_, buffer) in strings {
+        buffer.write(to: &stream)
+      }
+    }
+
+    public struct Recording {
+      public func write<T: TextOutputStream>(to stream: inout T) async {
+        for (source, buffer) in await recorder.strings {
+          if source == self.source {
+            buffer.write(to: &stream)
+          }
+        }
+      }
+
+      fileprivate let recorder: Recorder
+      fileprivate let source: Source
+    }
+    public var output: Recording { Recording(recorder: self, source: .output) }
+    public var error: Recording { Recording(recorder: self, source: .error) }
+
+    public func record(_ string: String, from source: Source) {
+      strings.append((source, string))
+    }
+
+    public enum Source {
+      case output, error
+    }
+    fileprivate var strings: [(Source, String)] = []
+  }
+
   /**
    An output backed by an unmanaged file descriptor. It is the caller's responsibility to ensure that this file descriptor remains valid for as long as this input is in use.
    */
@@ -83,6 +120,19 @@ public struct Output {
       return try await context.withNullOutputDevice(operation)
     case .fatalDevice:
       return try await context.withFatalOutputDevice(operation)
+    case .recording(let recording):
+      return try await Builtin.pipe(
+        operation,
+        to: { input in
+          try await context.withNullOutputDevice { output in
+            try await Builtin.withChannel(input: input, output: output, in: context) { channel in
+              for try await buffer in channel.input.byteBuffers {
+                await recording.recorder.record(String(buffer: buffer), from: recording.source)
+              }
+            }
+          }
+        }
+      ).source
     case .unmanaged(let fileDescriptor):
       return try await operation(fileDescriptor)
     }
@@ -94,6 +144,7 @@ public struct Output {
     case nullDevice
     case fatalDevice
     case unmanaged(FileDescriptor)
+    case recording(Recorder.Recording)
   }
   fileprivate let kind: Kind
 }
