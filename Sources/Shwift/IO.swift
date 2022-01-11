@@ -69,6 +69,8 @@ public struct Output {
 
   public actor Recorder {
 
+    public init() {}
+
     public func write<T: TextOutputStream>(to stream: inout T) async {
       for (_, buffer) in strings {
         buffer.write(to: &stream)
