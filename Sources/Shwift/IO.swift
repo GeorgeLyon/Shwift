@@ -70,14 +70,14 @@ public struct Output {
   public actor Recorder {
 
     public func write<T: TextOutputStream>(to stream: inout T) async {
-      for (_, buffer) in buffers {
+      for (_, buffer) in strings {
         buffer.write(to: &stream)
       }
     }
 
     public struct Recording {
       public func write<T: TextOutputStream>(to stream: inout T) async {
-        for (source, buffer) in await recorder.buffers {
+        for (source, buffer) in await recorder.strings {
           if source == self.source {
             buffer.write(to: &stream)
           }
@@ -90,14 +90,14 @@ public struct Output {
     public var output: Recording { Recording(recorder: self, source: .output) }
     public var error: Recording { Recording(recorder: self, source: .error) }
 
-    func record(_ buffer: String, from source: Source) {
-      buffers.append((source, buffer))
+    public func record(_ string: String, from source: Source) {
+      strings.append((source, string))
     }
 
-    enum Source {
+    public enum Source {
       case output, error
     }
-    fileprivate var buffers: [(Source, String)] = []
+    fileprivate var strings: [(Source, String)] = []
   }
 
   /**
