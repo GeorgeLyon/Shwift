@@ -8,7 +8,7 @@ Shwift is a package which provides tools for shell scripting in Swift.
 
 For example, you can write:
 ```
-try await echo("Foo", "Bar") | sed("s/Bar/Baz")
+try await echo("Foo", "Bar") | sed("s/Bar/Baz/")
 ```
 
 More capability is demonstrated in the [`ScriptExample` target](https://github.com/GeorgeLyon/Shwift/blob/552b32eacbf02a20ae51cae316e47ec4223a2005/Sources/ScriptExample/Main.swift#L29).
