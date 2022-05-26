@@ -24,7 +24,6 @@ jobs:
         # We ignore unparseable files because, for some reason, Process.swift breaks swift-format
         run: |
           swift run swift-format \
-            --mode=format \
             --in-place \
             --ignore-unparsable-files \
             --recursive Sources Tests
