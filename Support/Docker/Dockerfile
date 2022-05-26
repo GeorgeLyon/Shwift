@@ -1,4 +1,4 @@
-FROM swift:5.5-focal
+FROM swift:5.6-focal
 # FROM swiftlang/swift:nightly-main-focal
 
 RUN apt-get update
