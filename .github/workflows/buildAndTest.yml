@@ -13,11 +13,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - uses: compnerd/gha-setup-swift@main
+      - name: Install Correct Swift Version
+        uses: slashmo/install-swift@v0.1.0
         with:
-          # These must match the version of swift specified by `swift-format`
-          branch: swift-5.5-release
-          tag: 5.5-RELEASE
+          version: "5.6"
       - name: Build Formatting Tools
         run: |
           swift build --product swift-format
@@ -25,7 +24,6 @@ jobs:
         # We ignore unparseable files because, for some reason, Process.swift breaks swift-format
         run: |
           swift run swift-format \
-            --mode=format \
             --in-place \
             --ignore-unparsable-files \
             --recursive Sources Tests
@@ -40,15 +38,14 @@ jobs:
         include:
           - os: ubuntu-20.04
             swift:
-              branch: swift-5.5-release
-              tag: 5.5-RELEASE
+              version: "5.6"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      - uses: compnerd/gha-setup-swift@main
+      - name: Install Correct Swift Version
+        uses: slashmo/install-swift@v0.1.0
         with:
-          branch: ${{ matrix.swift.branch }}
-          tag: ${{ matrix.swift.tag }}
+          version: ${{ matrix.swift.version }}
       - run: swift build
       - run: swift test
       - run: swift run ScriptExample
