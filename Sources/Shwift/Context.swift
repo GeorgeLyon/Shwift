@@ -2,6 +2,11 @@
 
 import SystemPackage
 
+/**
+ An object which manages the lifetime of resources required for non-blocking execution of `Shwift` operations. This includes an event loop and threads for nonblocking file IO.
+ 
+ - note: `Context` shuts down asynchronously, so resources may not be immediately freed when this object is deinitialized (though this should happen quickly).
+ */
 public final class Context {
   let eventLoopGroup: EventLoopGroup
   let fileIO: NonBlockingFileIO
@@ -25,6 +30,7 @@ public final class Context {
   }
 
   /**
+   Creates a file descriptor representing a null output device which is valid for the duration of `operation`
    - note: In actuality, the null device is implemented as a pipe which discards anything written to it's write end. The problem with using something like `FileDescriptor.open("/dev/null", .writeOnly)` is that NIO on Linux uses `epoll` to read from file descriptors, and `epoll` is incompatible with `/dev/null`.
    */
   func withNullOutputDevice<T>(
@@ -35,7 +41,10 @@ public final class Context {
      */
     return try await operation(nullOutputDevice.fileDescriptor(with: eventLoopGroup))
   }
-
+  
+  /**
+   Creates a file descriptor which will call `fatalError` if any output is written to it. This descriptor is valid for the duration  of `operation`.
+   */
   func withFatalOutputDevice<T>(
     _ operation: (SystemPackage.FileDescriptor) async throws -> T
   ) async throws -> T {

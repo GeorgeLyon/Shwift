@@ -277,7 +277,7 @@ public func subshell<T>(
     shell.workingDirectory.push(path)
   }
   for (name, value) in environmentUpdates {
-    shell.environment[name] = value
+    shell.environment.setValue(value, forVariableNamed: name)
   }
   if let standardInput = standardInput {
     shell.standardInput = standardInput

@@ -53,6 +53,9 @@ private func echo(
 
 // MARK: - Cat
 
+/**
+ Writes the any input to the specified output
+ */
 public func cat(to output: Output) async throws {
   try await Shell.invoke { _, invocation in
     try await output.withFileDescriptor(in: invocation.context) { output in

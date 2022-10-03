@@ -2,6 +2,9 @@ import SystemPackage
 
 extension Builtin {
 
+  /**
+   Creates two file descriptors which are valid for the duration of `source` and `destination`, respectively. Data written to `source` will be readable from `destination` just like a unix pipe.
+   */
   public static func pipe<SourceOutcome, DestinationOutcome>(
     _ source: (FileDescriptor) async throws -> SourceOutcome,
     to destination: (FileDescriptor) async throws -> DestinationOutcome
@@ -32,6 +35,7 @@ extension Builtin {
       destinationResult = .failure(error)
     }
 
+    /// We use  results to ensure we wait on both tasks even if one throws
     return (try sourceResult.get(), try destinationResult.get())
   }
 
