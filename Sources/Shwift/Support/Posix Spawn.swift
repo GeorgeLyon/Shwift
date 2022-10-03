@@ -6,14 +6,14 @@
   struct SignalSet {
 
     // swift-format-ignore
-    public static var all: Self {
+    static var all: Self {
       get throws {
         try Self(sigfillset)
       }
     }
 
     // swift-format-ignore
-    public static var none: Self {
+    static var none: Self {
       get throws {
         try Self(sigemptyset)
       }
@@ -28,71 +28,71 @@
 
   enum PosixSpawn {
 
-    public struct Flags: OptionSet {
+    struct Flags: OptionSet {
 
-      public static let closeFileDescriptorsByDefault = Flags(rawValue: POSIX_SPAWN_CLOEXEC_DEFAULT)
+      static let closeFileDescriptorsByDefault = Flags(rawValue: POSIX_SPAWN_CLOEXEC_DEFAULT)
 
-      public static let setSignalMask = Flags(rawValue: POSIX_SPAWN_SETSIGMASK)
+      static let setSignalMask = Flags(rawValue: POSIX_SPAWN_SETSIGMASK)
 
-      public init(rawValue: Int32) {
+      init(rawValue: Int32) {
         self.rawValue = rawValue
       }
-      public var rawValue: Int32
+      var rawValue: Int32
     }
 
-    public struct Attributes: RawRepresentable {
+    struct Attributes: RawRepresentable {
 
-      public init() throws {
+      init() throws {
         try Errno.check(posix_spawnattr_init(&rawValue))
       }
 
-      public mutating func destroy() throws {
+      mutating func destroy() throws {
         try Errno.check(posix_spawnattr_destroy(&rawValue))
       }
 
-      public mutating func setBlockedSignals(to signals: SignalSet) throws {
+      mutating func setBlockedSignals(to signals: SignalSet) throws {
         try Errno.check(
           withUnsafePointer(to: signals.rawValue) { signals in
             posix_spawnattr_setsigmask(&rawValue, signals)
           })
       }
 
-      public mutating func setFlags(_ flags: Flags) throws {
+      mutating func setFlags(_ flags: Flags) throws {
         try Errno.check(posix_spawnattr_setflags(&rawValue, Int16(flags.rawValue)))
       }
 
-      public init(rawValue: posix_spawnattr_t?) {
+      init(rawValue: posix_spawnattr_t?) {
         self.rawValue = rawValue
       }
-      public var rawValue: posix_spawnattr_t?
+      var rawValue: posix_spawnattr_t?
 
     }
 
-    public struct FileActions: RawRepresentable {
+    struct FileActions: RawRepresentable {
 
-      public init() throws {
+      init() throws {
         try Errno.check(posix_spawn_file_actions_init(&rawValue))
       }
 
-      public mutating func destroy() throws {
+      mutating func destroy() throws {
         try Errno.check(posix_spawn_file_actions_destroy(&rawValue))
       }
 
-      public mutating func addChangeDirectory(to filePath: FilePath) throws {
+      mutating func addChangeDirectory(to filePath: FilePath) throws {
         try Errno.check(
           filePath.withPlatformString {
             posix_spawn_file_actions_addchdir_np(&rawValue, $0)
           })
       }
 
-      public mutating func addDuplicate(_ source: FileDescriptor, as target: CInt) throws {
+      mutating func addDuplicate(_ source: FileDescriptor, as target: CInt) throws {
         try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target))
       }
 
-      public init(rawValue: posix_spawn_file_actions_t?) {
+      init(rawValue: posix_spawn_file_actions_t?) {
         self.rawValue = rawValue
       }
-      public var rawValue: posix_spawn_file_actions_t?
+      var rawValue: posix_spawn_file_actions_t?
 
     }
 

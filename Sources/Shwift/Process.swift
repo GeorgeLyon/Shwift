@@ -10,6 +10,9 @@ import CLinuxSupport
 @_implementationOnly import NIO
 import SystemPackage
 
+/**
+ A value which represents a child process
+ */
 public struct Process {
 
   /**
