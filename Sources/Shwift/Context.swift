@@ -4,7 +4,7 @@ import SystemPackage
 
 /**
  An object which manages the lifetime of resources required for non-blocking execution of `Shwift` operations. This includes an event loop and threads for nonblocking file IO.
- 
+
  - note: `Context` shuts down asynchronously, so resources may not be immediately freed when this object is deinitialized (though this should happen quickly).
  */
 public final class Context {
@@ -41,7 +41,7 @@ public final class Context {
      */
     return try await operation(nullOutputDevice.fileDescriptor(with: eventLoopGroup))
   }
-  
+
   /**
    Creates a file descriptor which will call `fatalError` if any output is written to it. This descriptor is valid for the duration  of `operation`.
    */

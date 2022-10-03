@@ -4,7 +4,8 @@ import Shwift
  By default, shell output is processed as a list of lines
  */
 
-public func map(transform: @Sendable @escaping (String) async throws -> String) -> Shell.PipableCommand<Void>
+public func map(transform: @Sendable @escaping (String) async throws -> String)
+  -> Shell.PipableCommand<Void>
 {
   compactMap(transform: transform)
 }

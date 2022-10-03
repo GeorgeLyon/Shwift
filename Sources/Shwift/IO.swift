@@ -119,12 +119,12 @@ public struct Output {
       fileprivate let recorder: Recorder
       fileprivate let source: Source
     }
-    
+
     /**
      A `Recording` which records output to this recorder (simulating `stdout`)
      */
     public var output: Recording { Recording(recorder: self, source: .output) }
-    
+
     /**
      A `Recording` which records errors to this recorder (siulating `stderr`)
      */

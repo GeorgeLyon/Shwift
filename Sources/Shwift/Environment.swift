@@ -6,7 +6,7 @@ import SystemPackage
  A type representing the enviornment variables associated with a shell command
  */
 public struct Environment: ExpressibleByDictionaryLiteral {
-  
+
   /**
    Create an empty environment.
    */
@@ -40,7 +40,7 @@ public struct Environment: ExpressibleByDictionaryLiteral {
   public mutating func setValue(_ value: String?, forVariableNamed name: String) {
     self[name] = value
   }
-  
+
   subscript(name: String) -> String? {
     get {
       for entry in entries {
@@ -94,28 +94,28 @@ extension Environment {
   public struct SearchResults {
 
     public enum Event {
-      
+
       /**
        An error was encountered when reading from the filesystem
        */
       case encountered(Error)
-      
+
       /**
        A path in the `PATH` variable is not absolute, and as a result will not be searched
        */
       case pathIsNotAbsolute
-      
+
       /**
        A file was found with the specified name, but that file is not executable
        */
       case candidateIsNotExecuable
-      
+
       /**
        An executable was found with the specified name
        */
       case found
     }
-    
+
     /**
      The complete list of events, along with the file path they are associated with
      */
