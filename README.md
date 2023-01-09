@@ -11,7 +11,7 @@ try await echo("Foo", "Bar") | sed("s/Bar/Baz/")
 
 While a bit more verbose, this is natively integrated into Swift and utilizes Swift's concurrency APIs. As a result, interacting with command-line tools becomes very natural, and you can do things like `echo("Foo", "Bar") | map { $0.replacingOccurences(of: "Bar", with: "Baz" }`. We've worked very hard to make the performance of `Shwift` analogous with the command line. So if you execute the line `try await cat("/dev/urandom") | xxd() | head -n2`, You won't read any more from `/dev/urandom` than if you executed the analogous command in the terminal.
 
-The `Script` module provides API that is as similar as possible to the terminal, but expressed in Swift. It leverages `swift-argument-parser` and is potimized for writing shell-script-like programs. Here is an example of a simple program you can write (a more detailed example can be found in the [`ScriptExample` target](https://github.com/GeorgeLyon/Shwift/blob/552b32eacbf02a20ae51cae316e47ec4223a2005/Sources/ScriptExample/Main.swift#L29)):
+The `Script` module provides API that is as similar as possible to the terminal, but expressed in Swift. It leverages `swift-argument-parser` and is optimized for writing shell-script-like programs. Here is an example of a simple program you can write (a more detailed example can be found in the [`ScriptExample` target](https://github.com/GeorgeLyon/Shwift/blob/552b32eacbf02a20ae51cae316e47ec4223a2005/Sources/ScriptExample/Main.swift#L29)):
 
 ```swift 
 import Script
