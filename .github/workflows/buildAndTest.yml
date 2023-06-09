@@ -36,9 +36,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-20.04, macos-13
             swift:
-              version: "5.7"
+              version: "5.8"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
