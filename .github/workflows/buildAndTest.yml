@@ -7,8 +7,8 @@ on:
   pull_request: {}
 
 env:
-  swift-branch: swift-5.8-release
-  swift-tag: 5.8-RELEASE
+  swift-branch: swift-5.8.1-release
+  swift-tag: 5.8.1-RELEASE
 
 jobs:
 
