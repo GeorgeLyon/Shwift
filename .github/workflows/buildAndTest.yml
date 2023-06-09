@@ -6,17 +6,22 @@ on:
       - main
   pull_request: {}
 
+env:
+  swift-branch: swift-5.8-release
+  swift-tag: 5.8-RELEASE
+
 jobs:
 
   validate-formatting:
     name: Validate Formatting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
       - name: Install Correct Swift Version
-        uses: slashmo/install-swift@v0.1.0
+        uses: georgelyon/gha-setup-swift@main
         with:
-          version: "5.8"
+          branch: ${{ env.swift-branch }}
+          tag:  ${{ env.swift-tag }}
       - name: Build Formatting Tools
         run: |
           swift build --product swift-format
@@ -35,17 +40,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-20.04, macos-13
-            swift:
-              version: "5.8"
+        os: [ubuntu-22.04, macos-13]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
       - name: Install Correct Swift Version
-        uses: slashmo/install-swift@v0.1.0
+        uses: georgelyon/gha-setup-swift@main
         with:
-          version: ${{ matrix.swift.version }}
+          branch: ${{ env.swift-branch }}
+          tag:  ${{ env.swift-tag }}
       - run: swift build
       - run: swift test
       - run: swift run ScriptExample
