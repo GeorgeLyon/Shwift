@@ -1,10 +1,10 @@
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #elseif canImport(Glibc)
-import Glibc
-import CLinuxSupport
+  import Glibc
+  import CLinuxSupport
 #else
-#error("Unsupported Platform")
+  #error("Unsupported Platform")
 #endif
 
 @_implementationOnly import NIO
@@ -28,14 +28,15 @@ public struct Process {
     in context: Context
   ) async throws {
     try await launch(
-      executablePath: executablePath, 
-      arguments: arguments, 
-      environment: environment, 
-      workingDirectory: workingDirectory, 
-      fileDescriptors: fileDescriptors, 
-      logger: logger, 
-      in: context)
-      .value
+      executablePath: executablePath,
+      arguments: arguments,
+      environment: environment,
+      workingDirectory: workingDirectory,
+      fileDescriptors: fileDescriptors,
+      logger: logger,
+      in: context
+    )
+    .value
   }
 
   /**
@@ -53,7 +54,8 @@ public struct Process {
   ) async throws -> Task<Void, Error> {
     let process: Process
     let monitor: FileDescriptorMonitor
-    (process, monitor) = try await FileDescriptorMonitor.create(in: context) { monitoredDescriptor in
+    (process, monitor) = try await FileDescriptorMonitor.create(in: context) {
+      monitoredDescriptor in
       do {
         var fileDescriptors = fileDescriptors
         /// Map the monitored descriptor to the lowest unmapped target descriptor
@@ -76,19 +78,19 @@ public struct Process {
       }
     }
     return Task {
-      try await withTaskCancellationHandler(
-        handler: { process.terminate() }, 
-        operation: {
-          try await monitor.wait()
-          logger?.willWait(on: process)
-          do {
-            try await process.wait(in: context)
-            logger?.process(process, didTerminateWithError: nil)
-          } catch {
-            logger?.process(process, didTerminateWithError: error)
-            throw error
-          }
-        })
+      try await withTaskCancellationHandler {
+        try await monitor.wait()
+        logger?.willWait(on: process)
+        do {
+          try await process.wait(in: context)
+          logger?.process(process, didTerminateWithError: nil)
+        } catch {
+          logger?.process(process, didTerminateWithError: error)
+          throw error
+        }
+      } onCancel: {
+        process.terminate()
+      }
     }
   }
 
@@ -101,77 +103,79 @@ public struct Process {
     context: Context
   ) async throws {
     #if canImport(Darwin)
-    var attributes = try PosixSpawn.Attributes()
-    defer { try! attributes.destroy() }
-    try attributes.setFlags([
-      .closeFileDescriptorsByDefault,
-      .setSignalMask,
-    ])
-    try attributes.setBlockedSignals(to: .none)
-    
-    var actions = try PosixSpawn.FileActions()
-    defer { try! actions.destroy() }
-    try actions.addChangeDirectory(to: workingDirectory)
-    for entry in fileDescriptors.entries {
-      try actions.addDuplicate(entry.source, as: entry.target)
-    }
-  
-    id = ID(
-      rawValue: try PosixSpawn.spawn(
-        executablePath,
-        arguments: [executablePath.string] + arguments,
-        environment: environment.strings,
-        fileActions: &actions,
-        attributes: &attributes))!
-    #elseif canImport(Glibc)
-    let invocation: OpaquePointer = executablePath.withPlatformString { executablePath in
-      workingDirectory.withPlatformString { workingDirectory in
-        ShwiftSpawnInvocationCreate(
-          executablePath,
-          workingDirectory,
-          Int32(arguments.count + 1),
-          Int32(environment.strings.count),
-          Int32(fileDescriptors.entries.count))!
-      }
-    }
+      var attributes = try PosixSpawn.Attributes()
+      defer { try! attributes.destroy() }
+      try attributes.setFlags([
+        .closeFileDescriptorsByDefault,
+        .setSignalMask,
+      ])
+      try attributes.setBlockedSignals(to: .none)
 
-    /// Use a closure to make sure no errors are thrown before we can complete the invocation
-    id = await {
+      var actions = try PosixSpawn.FileActions()
+      defer { try! actions.destroy() }
+      try actions.addChangeDirectory(to: workingDirectory)
       for entry in fileDescriptors.entries {
-        ShwiftSpawnInvocationAddFileDescriptorMapping(invocation, entry.source.rawValue, entry.target)
+        try actions.addDuplicate(entry.source, as: entry.target)
       }
 
-      executablePath.withPlatformString { path in
-        ShwiftSpawnInvocationAddArgument(invocation, path)
-      }
-      for argument in arguments {
-        argument.withCString { argument in
-          ShwiftSpawnInvocationAddArgument(invocation, argument)
-        }
-      }
-      
-      for entry in environment.strings {
-        entry.withCString { entry in
-          ShwiftSpawnInvocationAddEnvironmentEntry(invocation, entry)
+      id = ID(
+        rawValue: try PosixSpawn.spawn(
+          executablePath,
+          arguments: [executablePath.string] + arguments,
+          environment: environment.strings,
+          fileActions: &actions,
+          attributes: &attributes))!
+    #elseif canImport(Glibc)
+      let invocation: OpaquePointer = executablePath.withPlatformString { executablePath in
+        workingDirectory.withPlatformString { workingDirectory in
+          ShwiftSpawnInvocationCreate(
+            executablePath,
+            workingDirectory,
+            Int32(arguments.count + 1),
+            Int32(environment.strings.count),
+            Int32(fileDescriptors.entries.count))!
         }
       }
 
-      let id: Process.ID
-      let monitor: FileDescriptorMonitor
-      (id, monitor) = try! await FileDescriptorMonitor.create(in: context) { monitoredDescriptor in
-        ID(rawValue: ShwiftSpawnInvocationLaunch(invocation, monitoredDescriptor.rawValue))!
+      /// Use a closure to make sure no errors are thrown before we can complete the invocation
+      id = await {
+        for entry in fileDescriptors.entries {
+          ShwiftSpawnInvocationAddFileDescriptorMapping(
+            invocation, entry.source.rawValue, entry.target)
+        }
+
+        executablePath.withPlatformString { path in
+          ShwiftSpawnInvocationAddArgument(invocation, path)
+        }
+        for argument in arguments {
+          argument.withCString { argument in
+            ShwiftSpawnInvocationAddArgument(invocation, argument)
+          }
+        }
+
+        for entry in environment.strings {
+          entry.withCString { entry in
+            ShwiftSpawnInvocationAddEnvironmentEntry(invocation, entry)
+          }
+        }
+
+        let id: Process.ID
+        let monitor: FileDescriptorMonitor
+        (id, monitor) = try! await FileDescriptorMonitor.create(in: context) {
+          monitoredDescriptor in
+          ID(rawValue: ShwiftSpawnInvocationLaunch(invocation, monitoredDescriptor.rawValue))!
+        }
+        try! await monitor.wait()
+        return id
+      }()
+      var failure = ShwiftSpawnInvocationFailure()
+      guard ShwiftSpawnInvocationComplete(invocation, &failure) else {
+        throw SpawnError(
+          file: String(cString: failure.file),
+          line: failure.line,
+          returnValue: failure.returnValue,
+          errorNumber: failure.errorNumber)
       }
-      try! await monitor.wait()
-      return id
-    }()
-    var failure = ShwiftSpawnInvocationFailure();
-    guard ShwiftSpawnInvocationComplete(invocation, &failure) else {
-      throw SpawnError(
-        file: String(cString: failure.file),
-        line: failure.line,
-        returnValue: failure.returnValue,
-        errorNumber: failure.errorNumber)
-    }
     #endif
   }
 
@@ -186,15 +190,15 @@ public struct Process {
   private func wait(in context: Context) async throws {
     /// Some key paths are different on Linux and macOS
     #if canImport(Darwin)
-    let pid = \siginfo_t.si_pid
-    let sigchldInfo = \siginfo_t.self
-    let killingSignal = \siginfo_t.si_status
+      let pid = \siginfo_t.si_pid
+      let sigchldInfo = \siginfo_t.self
+      let killingSignal = \siginfo_t.si_status
     #elseif canImport(Glibc)
-    let pid = \siginfo_t._sifields._sigchld.si_pid
-    let sigchldInfo = \siginfo_t._sifields._sigchld
-    let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
+      let pid = \siginfo_t._sifields._sigchld.si_pid
+      let sigchldInfo = \siginfo_t._sifields._sigchld
+      let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
     #endif
-    
+
     var info = siginfo_t()
     while true {
       /**
@@ -206,7 +210,7 @@ public struct Process {
         errno = 0
         var flags = WEXITED | WNOHANG
         #if canImport(Glibc)
-        flags |= __WALL
+          flags |= __WALL
         #endif
         let returnValue = waitid(P_PID, id_t(id.rawValue), &info, flags)
         guard returnValue == 0 else {
@@ -220,7 +224,7 @@ public struct Process {
         /// Reset `info`
         info = siginfo_t()
         /// Wait for 1 second (we can't use `Task.sleep` because we want to wait on the child process even if it was cancelled)
-        let _ : Void = await withCheckedContinuation { continuation in
+        let _: Void = await withCheckedContinuation { continuation in
           context.eventLoopGroup.next().scheduleTask(in: .seconds(1)) {
             continuation.resume()
           }
@@ -278,30 +282,31 @@ public protocol ProcessLogger {
 // MARK: - File Descriptor Mapping
 
 public extension Process {
-  
+
   struct FileDescriptorMapping: ExpressibleByDictionaryLiteral {
-    
+
     public init() {
       self.init(entries: [])
     }
-    
+
     public init(
       standardInput: SystemPackage.FileDescriptor,
       standardOutput: SystemPackage.FileDescriptor,
       standardError: SystemPackage.FileDescriptor,
       additionalFileDescriptors: KeyValuePairs<CInt, SystemPackage.FileDescriptor> = [:]
     ) {
-      self.init(entries: [
-        (source: standardInput, target: STDIN_FILENO),
-        (source: standardOutput, target: STDOUT_FILENO),
-        (source: standardError, target: STDERR_FILENO),
-      ] + additionalFileDescriptors.map { (source: $0.value, target: $0.key) })
+      self.init(
+        entries: [
+          (source: standardInput, target: STDIN_FILENO),
+          (source: standardOutput, target: STDOUT_FILENO),
+          (source: standardError, target: STDERR_FILENO),
+        ] + additionalFileDescriptors.map { (source: $0.value, target: $0.key) })
     }
-    
+
     public init(dictionaryLiteral elements: (CInt, SystemPackage.FileDescriptor)...) {
       self.init(entries: elements.map { (source: $0.1, target: $0.0) })
     }
-    
+
     public mutating func addMapping(
       from source: SystemPackage.FileDescriptor,
       to target: CInt
@@ -309,7 +314,7 @@ public extension Process {
       precondition(!entries.contains(where: { $0.target == target }))
       entries.append((source: source, target: target))
     }
-    
+
     private init(entries: [Entry]) {
       /// Ensure each file descriptor is only mapped to once
       precondition(Set(entries.map(\.target)).count == entries.count)
@@ -318,7 +323,7 @@ public extension Process {
     fileprivate typealias Entry = (source: SystemPackage.FileDescriptor, target: CInt)
     fileprivate private(set) var entries: [Entry]
   }
-  
+
 }
 
 // MARK: - Errors
@@ -359,7 +364,7 @@ extension Process {
 private struct FileDescriptorMonitor {
 
   static func create<T>(
-    in context: Context, 
+    in context: Context,
     _ forwardMonitoredDescriptor: (SystemPackage.FileDescriptor) async throws -> T
   ) async throws -> (outcome: T, monitor: FileDescriptorMonitor) {
     let future: EventLoopFuture<Void>
