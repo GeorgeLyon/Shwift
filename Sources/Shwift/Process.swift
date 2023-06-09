@@ -76,19 +76,19 @@ public struct Process {
       }
     }
     return Task {
-      try await withTaskCancellationHandler(
-        handler: { process.terminate() }, 
-        operation: {
-          try await monitor.wait()
-          logger?.willWait(on: process)
-          do {
-            try await process.wait(in: context)
-            logger?.process(process, didTerminateWithError: nil)
-          } catch {
-            logger?.process(process, didTerminateWithError: error)
-            throw error
-          }
-        })
+      try await withTaskCancellationHandler {
+        try await monitor.wait()
+        logger?.willWait(on: process)
+        do {
+          try await process.wait(in: context)
+          logger?.process(process, didTerminateWithError: nil)
+        } catch {
+          logger?.process(process, didTerminateWithError: error)
+          throw error
+        }
+      } onCancel: {
+        process.terminate()
+      }
     }
   }
 

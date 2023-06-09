@@ -6,13 +6,16 @@
     "--security-opt",
     "seccomp=unconfined"
   ],
-  "settings": {
-    "lldb.adapterType": "bundled",
-    "lldb.executable": "/usr/bin/lldb",
-    "terminal.integrated.defaultProfile.linux": "/bin/bash",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "lldb.adapterType": "bundled",
+        "lldb.executable": "/usr/bin/lldb",
+        "terminal.integrated.defaultProfile.linux": "/bin/bash",
+      },
+      "extensions": [
+        "sswg.swift-lang"
+      ],
+    }
   },
-  "extensions": [
-    "pvasek.sourcekit-lsp--dev-unofficial",
-    "vadimcn.vscode-lldb",
-  ],
 }

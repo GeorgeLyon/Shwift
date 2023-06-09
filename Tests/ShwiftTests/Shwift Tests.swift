@@ -42,22 +42,21 @@ final class ShwiftCoreTests: XCTestCase {
       is: .failure)
   }
 
-  func textExecutablePipe() throws {
+  func testExecutablePipe() throws {
     try XCTAssertOutput(
       of: { context, output in
         try await Builtin.pipe(
           { output in
-            try await Process.run("echo", "Input", standardOutput: output, in: context)
+            try await Process.run("echo", "Foo", standardOutput: output, in: context)
           },
           to: { input in
             try await Process.run(
-              "sed", "s/Input/Output/", standardInput: input, standardOutput: output, in: context)
+              "sed", "s/Foo/Bar/", standardInput: input, standardOutput: output, in: context)
           }
         ).destination
       },
       is: """
-        Echo
-        Cat
+        Bar
         """)
   }
 
