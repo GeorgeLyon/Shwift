@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Correct Swift Version
-        uses: compnerd/gha-setup-swift@main
+        uses: georgelyon/gha-setup-swift@main
         with:
           branch: ${{ env.swift-branch }}
           tag:  ${{ env.swift-tag }}
@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Correct Swift Version
-        uses: compnerd/gha-setup-swift@main
+        uses: georgelyon/gha-setup-swift@main
         with:
           branch: ${{ env.swift-branch }}
           tag:  ${{ env.swift-tag }}
