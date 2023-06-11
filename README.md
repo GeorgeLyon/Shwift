@@ -4,7 +4,7 @@
 
 Shwift is a package which provides tools for shell scripting in Swift. 
 
-For example, you can write the following swift code to achieve `echo Foo Bar | sed s/Bar/Baz/`:
+For example, you can write the following Swift code to achieve `echo Foo Bar | sed s/Bar/Baz/`:
 ```swift
 try await echo("Foo", "Bar") | sed("s/Bar/Baz/")
 ```
