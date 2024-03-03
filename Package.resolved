@@ -11,15 +11,6 @@
         }
       },
       {
-        "package": "swift-format",
-        "repositoryURL": "https://github.com/apple/swift-format",
-        "state": {
-          "branch": "release/5.8",
-          "revision": "fbfe1869527923dd9f9b2edac148baccfce0dce7",
-          "version": null
-        }
-      },
-      {
         "package": "swift-nio",
         "repositoryURL": "https://github.com/apple/swift-nio.git",
         "state": {
@@ -29,30 +20,12 @@
         }
       },
       {
-        "package": "SwiftSyntax",
-        "repositoryURL": "https://github.com/apple/swift-syntax",
-        "state": {
-          "branch": null,
-          "revision": "2c49d66d34dfd6f8130afdba889de77504b58ec0",
-          "version": "508.0.1"
-        }
-      },
-      {
         "package": "swift-system",
         "repositoryURL": "https://github.com/apple/swift-system",
         "state": {
           "branch": null,
           "revision": "836bc4557b74fe6d2660218d56e3ce96aff76574",
           "version": "1.1.1"
-        }
-      },
-      {
-        "package": "swift-tools-support-core",
-        "repositoryURL": "https://github.com/apple/swift-tools-support-core.git",
-        "state": {
-          "branch": null,
-          "revision": "93784c59434dbca8e8a9e4b700d0d6d94551da6a",
-          "version": "0.5.2"
         }
       }
     ]

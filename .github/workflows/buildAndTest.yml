@@ -6,47 +6,62 @@ on:
       - main
   pull_request: {}
 
-env:
-  swift-branch: swift-5.8.1-release
-  swift-tag: 5.8.1-RELEASE
-
 jobs:
-
   validate-formatting:
     name: Validate Formatting
     runs-on: ubuntu-22.04
+
     steps:
       - uses: actions/checkout@v2
-      - name: Install Correct Swift Version
-        uses: georgelyon/gha-setup-swift@main
+      - name: Initialize devcontainer
+        uses: devcontainers/ci@v0.3
         with:
-          branch: ${{ env.swift-branch }}
-          tag:  ${{ env.swift-tag }}
-      - name: Build Formatting Tools
-        run: |
-          swift build --product swift-format
+          push: never
+          runCmd: |
+            echo "Devcontainer Initialized."
       - name: Validate swift formatting
-        run: |
-          swift run swift-format \
-            --in-place \
-            --recursive Sources Tests
-          git diff
-          git diff-index --quiet HEAD --
+        uses: devcontainers/ci@v0.3
+        with:
+          runCmd: |
+            swift-format \
+              --in-place \
+              --recursive Sources Tests
+            git diff
+            git diff-index --quiet HEAD --
 
-  test:
-    name: Run Tests
+  test-macos:
+    name: Run Tests on macOS
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-13]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v2
       - name: Install Correct Swift Version
-        uses: georgelyon/gha-setup-swift@main
+        uses: compnerd/gha-setup-swift@main
         with:
-          branch: ${{ env.swift-branch }}
-          tag:  ${{ env.swift-tag }}
+          branch: swift-5.9-release
+          tag: 5.9-RELEASE
       - run: swift build
       - run: swift test
       - run: swift run ScriptExample
+
+  test-devcontainer:
+    name: Run Tests on macOS
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Initialize devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            echo "Devcontainer Initialized."
+      - name: Validate swift formatting
+        uses: devcontainers/ci@v0.3
+        with:
+          runCmd: |
+            swift build
+            swift test
+            swift run ScriptExample
