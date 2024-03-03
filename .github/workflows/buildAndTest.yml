@@ -18,10 +18,12 @@ jobs:
         with:
           push: never
           runCmd: |
+            git status
             echo "Devcontainer Initialized."
       - name: Validate swift formatting
         uses: devcontainers/ci@v0.3
         with:
+          push: never
           runCmd: |
             swift-format \
               --in-place \
@@ -58,9 +60,10 @@ jobs:
           push: never
           runCmd: |
             echo "Devcontainer Initialized."
-      - name: Validate swift formatting
+      - name: Test Shwift
         uses: devcontainers/ci@v0.3
         with:
+          push: never
           runCmd: |
             swift build
             swift test
