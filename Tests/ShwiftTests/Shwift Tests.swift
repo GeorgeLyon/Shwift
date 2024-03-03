@@ -163,19 +163,19 @@ private extension Shwift.Process {
     standardOutput: FileDescriptor? = nil,
     in context: Context
   ) async throws {
-    var fileDescriptors = FileDescriptorMapping()
+    var fileDescriptorMapping = FileDescriptorMapping()
     if let standardInput = standardInput {
-      fileDescriptors.addMapping(from: standardInput, to: STDIN_FILENO)
+      fileDescriptorMapping.addMapping(from: standardInput, to: STDIN_FILENO)
     }
     if let standardOutput = standardOutput {
-      fileDescriptors.addMapping(from: standardOutput, to: STDOUT_FILENO)
+      fileDescriptorMapping.addMapping(from: standardOutput, to: STDOUT_FILENO)
     }
     try await run(
       executablePath: environment.searchForExecutables(named: executableName).matches.first!,
       arguments: arguments,
       environment: [:],
       workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
-      fileDescriptors: fileDescriptors,
+      fileDescriptorMapping: fileDescriptorMapping,
       in: context)
   }
 }

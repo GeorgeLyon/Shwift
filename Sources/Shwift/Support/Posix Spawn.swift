@@ -1,34 +1,22 @@
 #if canImport(Darwin)
   import Darwin
-#elseif canImport(CLinuxSupport) && canImport(Glibc)
+
+  /// Optionality of some times does not align in Darwin vs Glibc, so we make a typealias to allow us to refer to them consistently.
+  private typealias PlatformType<U> = U?
+  private extension PlatformType {
+    init() {
+      self = nil
+    }
+  }
+#elseif canImport(Glibc)
   import Glibc
-  import CLinuxSupport
+
+  private typealias PlatformType<U> = U
 #else
   #error("Unsupported Platform")
 #endif
 
 import SystemPackage
-
-struct SignalSet {
-
-  static var all: Self {
-    get throws {
-      try Self(sigfillset)
-    }
-  }
-
-  static var none: Self {
-    get throws {
-      try Self(sigemptyset)
-    }
-  }
-
-  private init(_ fn: (UnsafeMutablePointer<sigset_t>) -> CInt) throws {
-    rawValue = sigset_t()
-    try Errno.check(fn(&rawValue))
-  }
-  var rawValue: sigset_t
-}
 
 enum PosixSpawn {
 
@@ -67,7 +55,7 @@ enum PosixSpawn {
       try Errno.check(posix_spawnattr_setflags(&rawValue, Int16(flags.rawValue)))
     }
 
-    var rawValue: posix_spawnattr_t = .init()
+    fileprivate var rawValue: PlatformType<posix_spawnattr_t> = .init()
   }
 
   struct FileActions {
@@ -83,15 +71,17 @@ enum PosixSpawn {
     mutating func addChangeDirectory(to filePath: FilePath) throws {
       try Errno.check(
         filePath.withPlatformString {
-          Shwift_posix_spawn_file_actions_addchdir_np(&rawValue, $0)
+          posix_spawn_file_actions_addchdir_np(&rawValue, $0)
         })
     }
 
-    mutating func addCloseFileDescriptors(from lowestFileDescriptorValueToClose: Int32) throws {
-      try Errno.check(
-        Shwift_posix_spawn_file_actions_addclosefrom_np(&rawValue, lowestFileDescriptorValueToClose)
-      )
-    }
+    #if canImport(Glibc)
+      mutating func addCloseFileDescriptors(from lowestFileDescriptorValueToClose: Int32) throws {
+        try Errno.check(
+          posix_spawn_file_actions_addclosefrom_np(&rawValue, lowestFileDescriptorValueToClose)
+        )
+      }
+    #endif
 
     mutating func addCloseFileDescriptor(_ value: Int32) throws {
       try Errno.check(
@@ -103,7 +93,7 @@ enum PosixSpawn {
       try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target))
     }
 
-    var rawValue: posix_spawn_file_actions_t = .init()
+    fileprivate var rawValue: PlatformType<posix_spawn_file_actions_t> = .init()
   }
 
   public static func spawn(
@@ -134,6 +124,29 @@ enum PosixSpawn {
     return pid
   }
 
+}
+
+// MARK: - Signals
+
+struct SignalSet {
+
+  static var all: Self {
+    get throws {
+      try Self(sigfillset)
+    }
+  }
+
+  static var none: Self {
+    get throws {
+      try Self(sigemptyset)
+    }
+  }
+
+  private init(_ fn: (UnsafeMutablePointer<sigset_t>) -> CInt) throws {
+    rawValue = sigset_t()
+    try Errno.check(fn(&rawValue))
+  }
+  var rawValue: sigset_t
 }
 
 // MARK: - Support
