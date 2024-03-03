@@ -37,5 +37,3 @@ import Script
 `Shwift` is more explicit about exactly what is being executed. You have a `Shwift.Context` which you can use to manage the lifetime of resources used by `Shwift` (for example, closing the `Shwift.Context` once it is no longer necessary). It also provides `Builtin`, which is a namespace for core functionality that is used to implement higher level Swift functions for interacting with command line tools in `Script`, like `map` and `reduce`.
 
 `Shwift` is build on top of `swift-nio` and as a result aims to be completely non-blocking, and thus suitable for use Swift programs which make extensive use of Swift's concurrency features, such as servers.
-
-`Shwift` also provides its own `Process` type. This type has a different API from `Foundation.Process` and embraces Swift's concurrency features, which the `Foundation.Process` API predates. It also works around a [nasty Foundation bug on Linux](https://github.com/apple/swift-corelibs-foundation/issues/3946) which can result in leaked file descriptors or deadlocks in concurrently-executing code. 
