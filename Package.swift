@@ -12,7 +12,6 @@ let package = Package(
     .library(name: "Shwift", targets: ["Shwift"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-format", .branch("release/5.8")),
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
     .package(url: "https://github.com/apple/swift-system", from: "1.1.1"),
     .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),

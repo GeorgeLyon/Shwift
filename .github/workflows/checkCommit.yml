@@ -1,0 +1,71 @@
+name: Check Commit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+
+jobs:
+  validate-formatting:
+    name: Validate Formatting
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Initialize devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            git status
+            echo "Devcontainer Initialized."
+      - name: Validate swift formatting
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            swift-format \
+              --in-place \
+              --recursive Sources Tests
+            git config --global --add safe.directory /workspaces/Shwift
+            git diff
+            git diff-index --quiet HEAD --
+
+  test-macos:
+    name: Run Tests on macOS
+    strategy:
+      fail-fast: false
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Correct Swift Version
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-5.9-release
+          tag: 5.9-RELEASE
+      - run: swift build
+      - run: swift test
+      - run: swift run ScriptExample
+
+  test-devcontainer:
+    name: Run Tests in devcontainer
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Initialize devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            echo "Devcontainer Initialized."
+      - name: Test Shwift
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            swift build
+            swift test
+            swift run ScriptExample

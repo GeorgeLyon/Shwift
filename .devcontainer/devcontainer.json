@@ -1,0 +1,37 @@
+{
+  "name": "Shwift",
+  "dockerFile": "Dockerfile",
+
+  "capAdd": [
+    "SYS_PTRACE"
+  ],
+  "securityOpt": [
+    "seccomp=unconfined"
+  ],
+
+  "mounts": [
+    // Use a named volume for the build products for optimal performance (https://code.visualstudio.com/remote/advancedcontainers/improve-performance?WT.mc_id=javascript-14373-yolasors#_use-a-targeted-named-volume)
+    "source=${localWorkspaceFolderBasename}-build,target=${containerWorkspaceFolder}/build,type=volume"
+  ],
+  "remoteEnv": {
+    // Useful for disambiguating devcontainers
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "lldb.library": "/usr/lib/liblldb.so",
+        "lldb.launch.expressions": "native",
+
+        "[swift]": {
+          "editor.defaultFormatter": "vknabel.vscode-apple-swift-format"
+        },
+      },
+      "extensions": [
+        "sswg.swift-lang",
+        "vknabel.vscode-apple-swift-format",
+      ],
+    }
+  },
+}
