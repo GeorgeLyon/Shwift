@@ -25,7 +25,11 @@ let package = Package(
         .product(name: "_NIOConcurrency", package: "swift-nio"),
         .target(name: "CLinuxSupport", condition: .when(platforms: [.linux])),
       ]),
-    .target(name: "CLinuxSupport"),
+    .target(
+      name: "CLinuxSupport",
+      cSettings: [
+        .define("_GNU_SOURCE")
+      ]),
 
     .target(
       name: "Script",

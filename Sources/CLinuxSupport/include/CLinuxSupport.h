@@ -2,7 +2,23 @@
 #ifndef __CLINUXSUPPORT_H
 #define __CLINUXSUPPORT_H
 
-#ifdef __linux__
+#ifndef __linux__
+#error This file is only relevant for Linux systems
+#endif
+
+#include <spawn.h>
+#include <stdbool.h>
+
+// Wrapper method for posix_spawn_file_actions_addchdir_np that fails on Linux versions that do not have this method available.
+int Shwift_posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *restrict file_actions, const char *restrict path);
+
+// Runtime check for the availability of posix_spawn_file_actions_addchdir_np. Returns 0 if the method is available, -1 if not.
+bool Shwift_posix_spawn_file_actions_addchdir_np_supported();
+
+// Wrapper method for posix_spawn_file_actions_addclosefrom_np that fails on Linux versions that do not have this method available.
+int Shwift_posix_spawn_file_actions_addclosefrom_np(posix_spawn_file_actions_t *restrict file_actions, int lowfiledes);
+
+// MARK: - OLD API
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -93,7 +109,5 @@ pid_t ShwiftSpawnInvocationLaunch(
   ShwiftSpawnInvocation* invocation,
   int monitor
 );
-
-#endif // __linux__
 
 #endif // __CLINUXSUPPORT_H
