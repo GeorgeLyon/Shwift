@@ -28,6 +28,7 @@ jobs:
             swift-format \
               --in-place \
               --recursive Sources Tests
+            git config --global --add safe.directory /workspaces/Shwift
             git diff
             git diff-index --quiet HEAD --
 
@@ -48,7 +49,7 @@ jobs:
       - run: swift run ScriptExample
 
   test-devcontainer:
-    name: Run Tests on macOS
+    name: Run Tests in devcontainer
     strategy:
       fail-fast: false
     runs-on: ubuntu-22.04
