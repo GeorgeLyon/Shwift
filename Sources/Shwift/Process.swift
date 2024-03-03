@@ -23,7 +23,7 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     logger: ProcessLogger? = nil,
     in context: Context
   ) async throws {
@@ -32,7 +32,7 @@ public struct Process {
       arguments: arguments,
       environment: environment,
       workingDirectory: workingDirectory,
-      fileDescriptors: fileDescriptors,
+      fileDescriptorMapping: fileDescriptorMapping,
       logger: logger,
       in: context
     )
@@ -48,7 +48,7 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     logger: ProcessLogger? = nil,
     in context: Context
   ) async throws -> Task<Void, Error> {
@@ -57,10 +57,10 @@ public struct Process {
     (process, monitor) = try await FileDescriptorMonitor.create(in: context) {
       monitoredDescriptor in
       do {
-        var fileDescriptors = fileDescriptors
+        var fileDescriptorMapping = fileDescriptorMapping
         /// Map the monitored descriptor to the lowest unmapped target descriptor
-        let mappedFileDescriptors = Set(fileDescriptors.entries.map(\.target))
-        fileDescriptors.addMapping(
+        let mappedFileDescriptors = Set(fileDescriptorMapping.entries.map(\.target))
+        fileDescriptorMapping.addMapping(
           from: monitoredDescriptor,
           to: (0...).first(where: { !mappedFileDescriptors.contains($0) })!)
         let process = try await Process(
@@ -68,7 +68,7 @@ public struct Process {
           arguments: arguments,
           environment: environment,
           workingDirectory: workingDirectory,
-          fileDescriptors: fileDescriptors,
+          fileDescriptorMapping: fileDescriptorMapping,
           context: context)
         logger?.didLaunch(process)
         return process
@@ -99,7 +99,7 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     context: Context
   ) async throws {
     #if true || canImport(Darwin)
@@ -120,12 +120,8 @@ public struct Process {
       var actions = try PosixSpawn.FileActions()
       defer { try! actions.destroy() }
       try actions.addChangeDirectory(to: workingDirectory)
-      // try actions.addCloseFileDescriptors(from: 0)
-      for entry in fileDescriptors.entries {
+      for entry in fileDescriptorMapping.entries {
         try actions.addDuplicate(entry.source, as: entry.target)
-      }
-      for i: Int32 in 3..<100 {
-        try actions.addCloseFileDescriptor(i)
       }
       try actions.addCloseFileDescriptors(from: 100)
 
@@ -318,6 +314,12 @@ public extension Process {
       self.init(entries: elements.map { (source: $0.1, target: $0.0) })
     }
 
+    private init(entries: [Entry]) {
+      /// Ensure each file descriptor is only mapped to once
+      precondition(Set(entries.map(\.target)).count == entries.count)
+      self.entries = entries
+    }
+
     public mutating func addMapping(
       from source: SystemPackage.FileDescriptor,
       to target: CInt
@@ -326,11 +328,6 @@ public extension Process {
       entries.append((source: source, target: target))
     }
 
-    private init(entries: [Entry]) {
-      /// Ensure each file descriptor is only mapped to once
-      precondition(Set(entries.map(\.target)).count == entries.count)
-      self.entries = entries
-    }
     fileprivate typealias Entry = (source: SystemPackage.FileDescriptor, target: CInt)
     fileprivate private(set) var entries: [Entry]
   }
