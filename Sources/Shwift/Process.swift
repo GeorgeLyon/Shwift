@@ -102,13 +102,19 @@ public struct Process {
     fileDescriptors: FileDescriptorMapping,
     context: Context
   ) async throws {
-    #if canImport(Darwin)
+    #if true || canImport(Darwin)
       var attributes = try PosixSpawn.Attributes()
       defer { try! attributes.destroy() }
-      try attributes.setFlags([
-        .closeFileDescriptorsByDefault,
-        .setSignalMask,
-      ])
+      #if canImport(Darwin)
+        try attributes.setFlags([
+          .closeFileDescriptorsByDefault,
+          .setSignalMask,
+        ])
+      #else
+        try attributes.setFlags([
+          .setSignalMask
+        ])
+      #endif
       try attributes.setBlockedSignals(to: .none)
 
       var actions = try PosixSpawn.FileActions()
@@ -117,6 +123,7 @@ public struct Process {
       for entry in fileDescriptors.entries {
         try actions.addDuplicate(entry.source, as: entry.target)
       }
+      try actions.addCloseFileDescriptors(from: 3)
 
       id = ID(
         rawValue: try PosixSpawn.spawn(

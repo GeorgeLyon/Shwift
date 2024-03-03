@@ -67,7 +67,7 @@ enum PosixSpawn {
       try Errno.check(posix_spawnattr_setflags(&rawValue, Int16(flags.rawValue)))
     }
 
-    var rawValue: posix_spawnattr_t!
+    var rawValue: posix_spawnattr_t = .init()
   }
 
   struct FileActions {
@@ -97,7 +97,7 @@ enum PosixSpawn {
       try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target))
     }
 
-    var rawValue: posix_spawn_file_actions_t!
+    var rawValue: posix_spawn_file_actions_t = .init()
   }
 
   public static func spawn(
