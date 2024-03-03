@@ -120,6 +120,7 @@ public struct Process {
       var actions = try PosixSpawn.FileActions()
       defer { try! actions.destroy() }
       try actions.addChangeDirectory(to: workingDirectory)
+      // try actions.addCloseFileDescriptors(from: 0)
       for entry in fileDescriptors.entries {
         try actions.addDuplicate(entry.source, as: entry.target)
       }
