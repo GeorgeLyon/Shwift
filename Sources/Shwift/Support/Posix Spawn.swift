@@ -93,6 +93,12 @@ enum PosixSpawn {
       )
     }
 
+    mutating func addCloseFileDescriptor(_ value: Int32) throws {
+      try Errno.check(
+        posix_spawn_file_actions_addclose(&rawValue, value)
+      )
+    }
+
     mutating func addDuplicate(_ source: FileDescriptor, as target: CInt) throws {
       try Errno.check(posix_spawn_file_actions_adddup2(&rawValue, source.rawValue, target))
     }

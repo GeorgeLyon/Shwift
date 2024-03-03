@@ -124,7 +124,10 @@ public struct Process {
       for entry in fileDescriptors.entries {
         try actions.addDuplicate(entry.source, as: entry.target)
       }
-      try actions.addCloseFileDescriptors(from: 3)
+      for i: Int32 in 3..<100 {
+        try actions.addCloseFileDescriptor(i)
+      }
+      try actions.addCloseFileDescriptors(from: 100)
 
       id = ID(
         rawValue: try PosixSpawn.spawn(
