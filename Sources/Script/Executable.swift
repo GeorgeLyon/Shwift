@@ -116,7 +116,7 @@ public struct Executable {
         arguments: arguments.compactMap { $0 },
         environment: shell.environment,
         workingDirectory: shell.workingDirectory,
-        fileDescriptors: .init(
+        fileDescriptorMapping: .init(
           standardInput: invocation.standardInput,
           standardOutput: invocation.standardOutput,
           standardError: invocation.standardError),

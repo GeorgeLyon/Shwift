@@ -1,12 +1,3 @@
-#if canImport(Darwin)
-  import Darwin
-#elseif canImport(Glibc)
-  import Glibc
-  import CLinuxSupport
-#else
-  #error("Unsupported Platform")
-#endif
-
 @_implementationOnly import NIO
 import SystemPackage
 
@@ -23,7 +14,7 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     logger: ProcessLogger? = nil,
     in context: Context
   ) async throws {
@@ -32,7 +23,7 @@ public struct Process {
       arguments: arguments,
       environment: environment,
       workingDirectory: workingDirectory,
-      fileDescriptors: fileDescriptors,
+      fileDescriptorMapping: fileDescriptorMapping,
       logger: logger,
       in: context
     )
@@ -48,7 +39,7 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     logger: ProcessLogger? = nil,
     in context: Context
   ) async throws -> Task<Void, Error> {
@@ -57,10 +48,10 @@ public struct Process {
     (process, monitor) = try await FileDescriptorMonitor.create(in: context) {
       monitoredDescriptor in
       do {
-        var fileDescriptors = fileDescriptors
+        var fileDescriptorMapping = fileDescriptorMapping
         /// Map the monitored descriptor to the lowest unmapped target descriptor
-        let mappedFileDescriptors = Set(fileDescriptors.entries.map(\.target))
-        fileDescriptors.addMapping(
+        let mappedFileDescriptors = Set(fileDescriptorMapping.entries.map(\.target))
+        fileDescriptorMapping.addMapping(
           from: monitoredDescriptor,
           to: (0...).first(where: { !mappedFileDescriptors.contains($0) })!)
         let process = try await Process(
@@ -68,7 +59,7 @@ public struct Process {
           arguments: arguments,
           environment: environment,
           workingDirectory: workingDirectory,
-          fileDescriptors: fileDescriptors,
+          fileDescriptorMapping: fileDescriptorMapping,
           context: context)
         logger?.didLaunch(process)
         return process
@@ -99,84 +90,63 @@ public struct Process {
     arguments: [String],
     environment: Environment,
     workingDirectory: FilePath,
-    fileDescriptors: FileDescriptorMapping,
+    fileDescriptorMapping: FileDescriptorMapping,
     context: Context
   ) async throws {
+    var attributes = try PosixSpawn.Attributes()
+    defer { try! attributes.destroy() }
     #if canImport(Darwin)
-      var attributes = try PosixSpawn.Attributes()
-      defer { try! attributes.destroy() }
       try attributes.setFlags([
         .closeFileDescriptorsByDefault,
         .setSignalMask,
       ])
-      try attributes.setBlockedSignals(to: .none)
-
-      var actions = try PosixSpawn.FileActions()
-      defer { try! actions.destroy() }
-      try actions.addChangeDirectory(to: workingDirectory)
-      for entry in fileDescriptors.entries {
-        try actions.addDuplicate(entry.source, as: entry.target)
-      }
-
-      id = ID(
-        rawValue: try PosixSpawn.spawn(
-          executablePath,
-          arguments: [executablePath.string] + arguments,
-          environment: environment.strings,
-          fileActions: &actions,
-          attributes: &attributes))!
     #elseif canImport(Glibc)
-      let invocation: OpaquePointer = executablePath.withPlatformString { executablePath in
-        workingDirectory.withPlatformString { workingDirectory in
-          ShwiftSpawnInvocationCreate(
-            executablePath,
-            workingDirectory,
-            Int32(arguments.count + 1),
-            Int32(environment.strings.count),
-            Int32(fileDescriptors.entries.count))!
-        }
-      }
-
-      /// Use a closure to make sure no errors are thrown before we can complete the invocation
-      id = await {
-        for entry in fileDescriptors.entries {
-          ShwiftSpawnInvocationAddFileDescriptorMapping(
-            invocation, entry.source.rawValue, entry.target)
-        }
-
-        executablePath.withPlatformString { path in
-          ShwiftSpawnInvocationAddArgument(invocation, path)
-        }
-        for argument in arguments {
-          argument.withCString { argument in
-            ShwiftSpawnInvocationAddArgument(invocation, argument)
-          }
-        }
-
-        for entry in environment.strings {
-          entry.withCString { entry in
-            ShwiftSpawnInvocationAddEnvironmentEntry(invocation, entry)
-          }
-        }
-
-        let id: Process.ID
-        let monitor: FileDescriptorMonitor
-        (id, monitor) = try! await FileDescriptorMonitor.create(in: context) {
-          monitoredDescriptor in
-          ID(rawValue: ShwiftSpawnInvocationLaunch(invocation, monitoredDescriptor.rawValue))!
-        }
-        try! await monitor.wait()
-        return id
-      }()
-      var failure = ShwiftSpawnInvocationFailure()
-      guard ShwiftSpawnInvocationComplete(invocation, &failure) else {
-        throw SpawnError(
-          file: String(cString: failure.file),
-          line: failure.line,
-          returnValue: failure.returnValue,
-          errorNumber: failure.errorNumber)
-      }
+      /// Linux does not support `closeFileDescriptorsByDefault`, so we emulate it below
+      try attributes.setFlags([
+        .setSignalMask
+      ])
+    #else
+      #error("Unsupported Platform")
     #endif
+    try attributes.setBlockedSignals(to: .none)
+
+    var actions = try PosixSpawn.FileActions()
+    defer { try! actions.destroy() }
+    try actions.addChangeDirectory(to: workingDirectory)
+
+    for entry in fileDescriptorMapping.entries {
+      try actions.addDuplicate(entry.source, as: entry.target)
+    }
+
+    #if canImport(Darwin)
+      /// Darwin support `closeFileDescriptorsByDefault`, so no need to emulate it
+    #elseif canImport(Glibc)
+      /// In order to emulate `POSIX_SPAWN_CLOEXEC_DEFAULT`, we use `posix_spawn_file_actions_addclosefrom_np`.
+      /// This only works if passed a lower bound file descriptor, so this emulation only works if the file descriptors we are mapping have contiguous values starting at 0.
+      /// Instead of supporting the general case (which is unlikely) we enforce that fileDescriptorMapping provides us our descriptors in order starting at 0.
+      var availableFileDescriptors = (CInt(0)...).makeIterator()
+      for (_, target) in fileDescriptorMapping.entries {
+        guard target == availableFileDescriptors.next() else {
+          /// `ENOSYS` seems like a good error to throw here:
+          /// Reference: https://github.com/apple/swift-tools-support-core/blob/main/Sources/TSCclibc/process.c
+          throw Errno(rawValue: ENOSYS)
+        }
+      }
+      guard let lowestFileDescriptorValueToClose = availableFileDescriptors.next() else {
+        throw Errno(rawValue: ENOSYS)
+      }
+      try actions.addCloseFileDescriptors(from: lowestFileDescriptorValueToClose)
+    #else
+      #error("Unsupported Platform")
+    #endif
+
+    id = ID(
+      rawValue: try PosixSpawn.spawn(
+        executablePath,
+        arguments: [executablePath.string] + arguments,
+        environment: environment.strings,
+        fileActions: &actions,
+        attributes: &attributes))!
   }
 
   private func terminate() {
@@ -197,6 +167,8 @@ public struct Process {
       let pid = \siginfo_t._sifields._sigchld.si_pid
       let sigchldInfo = \siginfo_t._sifields._sigchld
       let killingSignal = \siginfo_t._sifields._rt.si_sigval.sival_int
+    #else
+      #error("Unsupported Platform")
     #endif
 
     var info = siginfo_t()
@@ -307,6 +279,12 @@ public extension Process {
       self.init(entries: elements.map { (source: $0.1, target: $0.0) })
     }
 
+    private init(entries: [Entry]) {
+      /// Ensure each file descriptor is only mapped to once
+      precondition(Set(entries.map(\.target)).count == entries.count)
+      self.entries = entries
+    }
+
     public mutating func addMapping(
       from source: SystemPackage.FileDescriptor,
       to target: CInt
@@ -315,11 +293,6 @@ public extension Process {
       entries.append((source: source, target: target))
     }
 
-    private init(entries: [Entry]) {
-      /// Ensure each file descriptor is only mapped to once
-      precondition(Set(entries.map(\.target)).count == entries.count)
-      self.entries = entries
-    }
     fileprivate typealias Entry = (source: SystemPackage.FileDescriptor, target: CInt)
     fileprivate private(set) var entries: [Entry]
   }

@@ -51,14 +51,18 @@ import Script
 
       case .stressTest:
         for i in 0..<50_000 {
-          try await withThrowingTaskGroup(of: Void.self) { group in
+          try await withThrowingTaskGroup(of: (Int, Int).self) { group in
             for j in 0..<50 {
+              print("(i, j) = (\(i), \(j))")
               group.addTask {
                 try await echo("\(i),\(j):", "Foo", "Bar") | sed("s/Bar/Baz/")
                   | map { $0.replacingOccurrences(of: "Baz", with: "Baz!") }
+                return (i, j)
               }
             }
-            for try await _ in group {}
+            for try await (i, j) in group {
+              print("completed (\(i), \(j))")
+            }
           }
         }
       }
