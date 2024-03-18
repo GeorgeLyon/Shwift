@@ -30,6 +30,18 @@ final class ScriptCoreTests: XCTestCase {
     }
   }
 
+  /// Demo [#22 dropped remainder](https://github.com/GeorgeLyon/Shwift/issues/22)
+  func testEchoMapWithDelimiters() async throws {
+    try runInScript {
+      let result = try await outputOf {
+        try await echo("1", "2", separator: ",", terminator: "")
+        | compactMap(segmentingInputAt: ",", withOutputTerminator: "|") { "<\($0)>"}
+      }
+      let exp = "<1>|<2>|"
+      XCTAssertEqual(exp, result, "echo 1,2 -map-> <1>|<2>|")
+    }
+  }
+
   /// Run test in Script.run() context
   private func runInScript(
     _ op: @escaping RunInScriptProxy.Op,
