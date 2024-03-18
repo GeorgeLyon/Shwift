@@ -32,12 +32,14 @@ public func compactMap(
 
 public func reduce<T>(
   into initialResult: T,
+  segmentingInputAt delimiter: Character = "\n",
   _ updateAccumulatingResult: @escaping (inout T, String) async throws -> Void
 ) -> Shell.PipableCommand<T> {
   Shell.PipableCommand {
     try await Shell.invoke { _, invocation in
       try await invocation.builtin { channel in
-        try await channel.input.lines.reduce(into: initialResult, updateAccumulatingResult)
+        try await channel.input.segmented(by: delimiter)
+          .reduce(into: initialResult, updateAccumulatingResult)
       }
     }
   }
@@ -45,12 +47,13 @@ public func reduce<T>(
 
 public func reduce<T>(
   _ initialResult: T,
+  segmentingInputAt delimiter: Character = "\n",
   _ nextPartialResult: @escaping (T, String) async throws -> T
 ) -> Shell.PipableCommand<T> {
   Shell.PipableCommand {
     try await Shell.invoke { _, invocation in
       try await invocation.builtin { channel in
-        try await channel.input.lines.reduce(initialResult, nextPartialResult)
+        try await channel.input.segmented(by: delimiter).reduce(initialResult, nextPartialResult)
       }
     }
   }
