@@ -111,7 +111,7 @@ extension Builtin {
                   continuation.yield(remainder + String(line))
                   remainder = ""
                 }
-                remainder = String(substring)
+                remainder += String(substring)
               }
               if !remainder.isEmpty {
                 continuation.yield(String(remainder))
