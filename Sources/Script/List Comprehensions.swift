@@ -10,15 +10,17 @@ public func map(transform: @Sendable @escaping (String) async throws -> String)
   compactMap(transform: transform)
 }
 
-public func compactMap(transform: @Sendable @escaping (String) async throws -> String?)
-  -> Shell.PipableCommand<Void>
-{
+public func compactMap(
+  segmentingInputAt delimiter: Character = "\n",
+  withOutputTerminator terminator: String = "\n",
+  transform: @Sendable @escaping (String) async throws -> String?
+) -> Shell.PipableCommand<Void> {
   Shell.PipableCommand {
     try await Shell.invoke { shell, invocation in
       try await invocation.builtin { channel in
-        for try await line in channel.input.lines.compactMap(transform) {
+        for try await line in channel.input.segmented(by: delimiter).compactMap(transform) {
           try await channel.output.withTextOutputStream { stream in
-            print(line, to: &stream)
+            print(line, terminator: terminator, to: &stream)
           }
         }
       }
