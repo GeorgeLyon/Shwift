@@ -38,6 +38,10 @@ import Script
         let numberOfLines =
           try await echo("Foo", "Bar") | reduce(into: 0, { count, _ in count += 1 })
         print(numberOfLines)
+        let totals =
+          try await echo("-n", "1", "2", "3")
+            | reduce(4, segmentingInputAt: " ") {$0 + (Int($1) ?? -10)}
+        print("10 == \(totals) from 4 + 1 + 2 + 3")
       case .writeToFile:
         try await echo("Foo") > "Test.txt"
       case .infiniteInput:
