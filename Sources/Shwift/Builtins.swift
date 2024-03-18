@@ -105,7 +105,7 @@ extension Builtin {
                   at: buffer.readerIndex,
                   length: buffer.readableBytes)!
                 var substring = readString[readString.startIndex...]
-                while let lineBreak = substring.firstIndex(of: "\n") {
+                while let lineBreak = substring.firstIndex(of: delimiter) {
                   let line = substring[substring.startIndex..<lineBreak]
                   substring = substring[substring.index(after: lineBreak)...]
                   continuation.yield(remainder + String(line))
@@ -126,9 +126,20 @@ extension Builtin {
       }
 
       fileprivate let byteBuffers: ByteBuffers
+      fileprivate let delimiter: Character
     }
+
+    /// Make a Lines iterator splitting at newlines
     public var lines: Lines {
-      Lines(byteBuffers: byteBuffers)
+      segmented()
+    }
+
+    /// Make a Lines iterator yielding text segments between delimiters (like split).
+    ///
+    /// - Parameter delimiter: Character separating input text to yield (and not itself yielded)  Defaults to newline.
+    /// - Returns: Lines segmented by delimiter
+    public func segmented(by delimiter: Character = "\n") -> Lines {
+      Lines(byteBuffers: byteBuffers, delimiter: delimiter)
     }
 
     typealias ByteBuffers = AsyncCompactMapSequence<
