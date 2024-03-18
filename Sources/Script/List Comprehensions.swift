@@ -4,10 +4,12 @@ import Shwift
  By default, shell output is processed as a list of lines
  */
 
-public func map(transform: @Sendable @escaping (String) async throws -> String)
-  -> Shell.PipableCommand<Void>
-{
-  compactMap(transform: transform)
+public func map(
+  segmentingInputAt delimiter: Character = "\n",
+  withOutputTerminator terminator: String = "\n",
+  transform: @Sendable @escaping (String) async throws -> String
+) -> Shell.PipableCommand<Void> {
+  compactMap(segmentingInputAt: delimiter, withOutputTerminator: terminator, transform: transform)
 }
 
 public func compactMap(
