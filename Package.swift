@@ -49,7 +49,9 @@ let package = Package(
       name: "ShwiftTests",
       dependencies: ["Shwift"],
       resources: [
-        .copy("Cat.txt")
+        .copy("Cat.txt"),
+        .copy("Chunks.txt"),
+        .copy("Chunks.bin"),
       ]),
   ]
 )

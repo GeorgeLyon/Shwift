@@ -86,6 +86,27 @@ final class ShwiftCoreTests: XCTestCase {
         """)
   }
 
+  func testInputChunksTxt() throws {
+    try XCTAssertOutput(
+      of: { context, output in
+        try await Builtin.read(from: FilePath(Self.chunksTxtFilePath), to: output, in: context)
+      },
+      is: "1 < 2\n3 < 4\n",
+      afterSplittingWith: ";",
+      andJoiningWith: " < "
+    )
+  }
+
+  func testInputChunksBin() throws {
+    try XCTAssertOutput(
+      of: { context, output in
+        try await Builtin.read(from: FilePath(Self.chunksBinFilePath), to: output, in: context)
+      },
+      is: "1<2\n3<4",
+      afterSplittingWith: ";",
+      andJoiningWith: "<"
+    )
+  }
   private enum Outcome: ExpressibleByStringInterpolation {
     init(stringLiteral value: String) {
       self = .success(value)
@@ -97,6 +118,8 @@ final class ShwiftCoreTests: XCTestCase {
   private func XCTAssertOutput(
     of operation: @escaping (Context, FileDescriptor) async throws -> Void,
     is expectedOutcome: Outcome,
+    afterSplittingWith inDelimiter: Character = "\n",
+    andJoiningWith outDelimiter: String = "\n",
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
   ) throws {
@@ -116,9 +139,9 @@ final class ShwiftCoreTests: XCTestCase {
               return try await Output.nullDevice.withFileDescriptor(in: context) { output in
                 try await Builtin.withChannel(input: input, output: output, in: context) {
                   channel in
-                  return try await channel.input.lines
+                  return try await channel.input.segmented(by: inDelimiter)
                     .reduce(into: [], { $0.append($1) })
-                    .joined(separator: "\n")
+                    .joined(separator: outDelimiter)
                 }
               }
             } catch {
@@ -152,6 +175,8 @@ final class ShwiftCoreTests: XCTestCase {
   }
 
   private static let supportFilePath = Bundle.module.path(forResource: "Cat", ofType: "txt")!
+  private static let chunksBinFilePath = Bundle.module.path(forResource: "Chunks", ofType: "bin")!
+  private static let chunksTxtFilePath = Bundle.module.path(forResource: "Chunks", ofType: "txt")!
 }
 
 private extension Shwift.Process {
