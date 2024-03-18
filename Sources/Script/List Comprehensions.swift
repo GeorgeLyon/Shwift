@@ -11,8 +11,8 @@ import Shwift
  - Returns: ``Shell/PipableCommand``
  */
 public func map(
-  segmentingInputAt delimiter: Character = "\n",
-  withOutputTerminator terminator: String = "\n",
+  segmentingInputAt delimiter: Character = Builtin.Input.Lines.eol,
+  withOutputTerminator terminator: String = Builtin.Input.Lines.eolStr,
   transform: @Sendable @escaping (String) async throws -> String
 ) -> Shell.PipableCommand<Void> {
   compactMap(segmentingInputAt: delimiter, withOutputTerminator: terminator, transform: transform)
@@ -29,8 +29,8 @@ public func map(
  - Returns: ``Shell/PipableCommand``
  */
 public func compactMap(
-  segmentingInputAt delimiter: Character = "\n",
-  withOutputTerminator terminator: String = "\n",
+  segmentingInputAt delimiter: Character = Builtin.Input.Lines.eol,
+  withOutputTerminator terminator: String = Builtin.Input.Lines.eolStr,
   transform: @Sendable @escaping (String) async throws -> String?
 ) -> Shell.PipableCommand<Void> {
   Shell.PipableCommand {
@@ -56,7 +56,7 @@ public func compactMap(
 */
 public func reduce<T>(
   into initialResult: T,
-  segmentingInputAt delimiter: Character = "\n",
+  segmentingInputAt delimiter: Character = Builtin.Input.Lines.eol,
   _ updateAccumulatingResult: @escaping (inout T, String) async throws -> Void
 ) -> Shell.PipableCommand<T> {
   Shell.PipableCommand {
@@ -79,7 +79,7 @@ public func reduce<T>(
  */
 public func reduce<T>(
   _ initialResult: T,
-  segmentingInputAt delimiter: Character = "\n",
+  segmentingInputAt delimiter: Character = Builtin.Input.Lines.eol,
   _ nextPartialResult: @escaping (T, String) async throws -> T
 ) -> Shell.PipableCommand<T> {
   Shell.PipableCommand {

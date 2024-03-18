@@ -118,8 +118,8 @@ final class ShwiftCoreTests: XCTestCase {
   private func XCTAssertOutput(
     of operation: @escaping (Context, FileDescriptor) async throws -> Void,
     is expectedOutcome: Outcome,
-    afterSplittingWith inDelimiter: Character = "\n",
-    andJoiningWith outDelimiter: String = "\n",
+    afterSplittingWith inDelimiter: Character = Builtin.Input.Lines.eol,
+    andJoiningWith outDelimiter: String = Builtin.Input.Lines.eolStr,
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
   ) throws {

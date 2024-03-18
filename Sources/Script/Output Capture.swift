@@ -1,3 +1,5 @@
+import Shwift
+
 /**
  Captures operation output as text.
 
@@ -12,8 +14,8 @@
  - Returns: String of output items delimited by separator
  */
 public func outputOf(
-  segmentingInputAt delimiter: Character = "\n",
-  withOutputSeparator separator: String = "\n",
+  segmentingInputAt delimiter: Character = Builtin.Input.Lines.eol,
+  withOutputSeparator separator: String = Builtin.Input.Lines.eolStr,
   _ operation: @escaping () async throws -> Void
 ) async throws -> String {
   let lines =

@@ -87,6 +87,8 @@ extension Builtin {
   public struct Input {
 
     public struct Lines: AsyncSequence {
+      public static let eol: Character = "\n"
+      public static let eolStr = "\n"
       public typealias Element = String
 
       public struct AsyncIterator: AsyncIteratorProtocol {
@@ -138,7 +140,7 @@ extension Builtin {
     ///
     /// - Parameter delimiter: Character separating input text to yield (and not itself yielded)  Defaults to newline.
     /// - Returns: Lines segmented by delimiter
-    public func segmented(by delimiter: Character = "\n") -> Lines {
+    public func segmented(by delimiter: Character = Lines.eol) -> Lines {
       Lines(byteBuffers: byteBuffers, delimiter: delimiter)
     }
 
