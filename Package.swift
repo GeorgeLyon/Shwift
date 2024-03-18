@@ -42,6 +42,10 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "ScriptTests",
+      dependencies: ["Script"]
+    ),
+    .testTarget(
       name: "ShwiftTests",
       dependencies: ["Shwift"],
       resources: [
