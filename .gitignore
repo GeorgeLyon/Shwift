@@ -5,3 +5,5 @@
 xcuserdata/
 .vscode
 /build
+.swiftpm
+.xcode
