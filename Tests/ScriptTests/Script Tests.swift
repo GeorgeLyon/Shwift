@@ -24,9 +24,26 @@ final class ScriptCoreTests: XCTestCase {
       var result: String
       result = try await outputOf {
         // inject newline so map op runs on head then tail
-        try await echo("1", "2", "\n", "3", "4") | map(){"<\($0)>"}
+        try await echo("1", "2", "\n", "3", "4") | map { "<\($0)>" }
       }
       XCTAssertEqual("<1 2 >\n< 3 4>", result, "echo 1 2 \n 3 4 | map{<$0>}")
+    }
+  }
+
+  func testSplitInput() async throws {
+    let semi: Character = ";"
+    let op = { echo("1", "2", ";buckle my\n", "shoe; 3, 4; shut the\ndoor") }
+    let expStr = ["1 2 ", "buckle my\n shoe", " 3, 4", " shut the\ndoor\n"]
+    let exp = expStr.map { T(s: $0) }
+    try runInScript {
+      let result =
+        try await op()
+        | splitInput(on: semi, into: []) { $0.append(T(s: $1)) }
+      XCTAssertEqual(exp, result, "splitInput (with reduce)")
+    }
+    struct T: Equatable, CustomStringConvertible {
+      let s: String
+      var description: String { s.replacingOccurrences(of: "\n", with: "\\n") }
     }
   }
 
@@ -37,7 +54,7 @@ final class ScriptCoreTests: XCTestCase {
     callerLine: UInt = #line
   ) throws {
     let e = expectation(description: "\(caller):\(callerLine)")
-    try RunInScriptProxy(op, e).run() // sync call preferred
+    try RunInScriptProxy(op, e).run()  // sync call preferred
     wait(for: [e], timeout: 2)
   }
 
@@ -61,4 +78,3 @@ final class ScriptCoreTests: XCTestCase {
     }
   }
 }
-
