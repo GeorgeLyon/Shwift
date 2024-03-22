@@ -4,8 +4,8 @@ import SystemPackage
 
 final class ShwiftCoreTests: XCTestCase {
 
-  func testExecutable() throws {
-    try XCTAssertOutput(
+  func testExecutable() async throws {
+    try await XCTAssertOutput(
       of: { context, standardOutput in
         try await Process.run("echo", "Echo", standardOutput: standardOutput, in: context)
       },
@@ -13,7 +13,7 @@ final class ShwiftCoreTests: XCTestCase {
         Echo
         """)
 
-    try XCTAssertOutput(
+    try await XCTAssertOutput(
       of: { context, standardOutput in
         try await Process.run(
           "cat", Self.supportFilePath, standardOutput: standardOutput, in: context)
@@ -22,7 +22,7 @@ final class ShwiftCoreTests: XCTestCase {
         Cat
         """)
 
-    try XCTAssertOutput(
+    try await XCTAssertOutput(
       of: { context, standardOutput in
         try await Process.run("echo", "Echo", standardOutput: standardOutput, in: context)
         try await Process.run(
@@ -34,16 +34,16 @@ final class ShwiftCoreTests: XCTestCase {
         """)
   }
 
-  func testFailure() throws {
-    try XCTAssertOutput(
+  func testFailure() async throws {
+    try await XCTAssertOutput(
       of: { context, _ in
         try await Process.run("false", in: context)
       },
       is: .failure)
   }
 
-  func testExecutablePipe() throws {
-    try XCTAssertOutput(
+  func testExecutablePipe() async throws {
+    try await XCTAssertOutput(
       of: { context, output in
         try await Builtin.pipe(
           { output in
@@ -60,8 +60,32 @@ final class ShwiftCoreTests: XCTestCase {
         """)
   }
 
-  func testBuiltinOutput() throws {
-    try XCTAssertOutput(
+  func testInputSegmentation() async throws {
+    try await XCTAssertOutput(
+      of: { context, output in
+        try await Builtin.pipe(
+          { output in
+            try await Process.run("echo", "Foo;Bar;Baz", standardOutput: output, in: context)
+          },
+          to: { input in
+            try await Builtin.withChannel(input: input, output: output, in: context) { channel in
+              let count = try await channel.input
+                .segments(separatedBy: ";")
+                .reduce(into: 0, { count, _ in count += 1 })
+              try await channel.output.withTextOutputStream { stream in
+                print("\(count)", to: &stream)
+              }
+            }
+          }
+        ).destination
+      },
+      is: """
+        3
+        """)
+  }
+
+  func testBuiltinOutput() async throws {
+    try await XCTAssertOutput(
       of: { context, output in
         try await Input.nullDevice.withFileDescriptor(in: context) { input in
           try await Builtin.withChannel(input: input, output: output, in: context) { channel in
@@ -76,8 +100,8 @@ final class ShwiftCoreTests: XCTestCase {
         """)
   }
 
-  func testReadFromFile() throws {
-    try XCTAssertOutput(
+  func testReadFromFile() async throws {
+    try await XCTAssertOutput(
       of: { context, output in
         try await Builtin.read(from: FilePath(Self.supportFilePath), to: output, in: context)
       },
@@ -99,56 +123,58 @@ final class ShwiftCoreTests: XCTestCase {
     is expectedOutcome: Outcome,
     file: StaticString = #file, line: UInt = #line,
     function: StaticString = #function
-  ) throws {
-    let e1 = expectation(description: "\(function):\(line)")
-    let e2 = expectation(description: "\(function):\(line)")
+  ) async throws {
+    let e1 = expectation(description: "\(function):\(line)-operation")
+    let e2 = expectation(description: "\(function):\(line)-gather")
     let context = Context()
-    Task {
-      do {
-        let output: String = try await Builtin.pipe(
-          { output in
-            defer { e1.fulfill() }
-            try await operation(context, output)
-          },
-          to: { input in
-            defer { e2.fulfill() }
-            do {
-              return try await Output.nullDevice.withFileDescriptor(in: context) { output in
-                try await Builtin.withChannel(input: input, output: output, in: context) {
-                  channel in
-                  return try await channel.input.lines
-                    .reduce(into: [], { $0.append($1) })
-                    .joined(separator: "\n")
-                }
-              }
-            } catch {
-              XCTFail(file: file, line: line)
-              throw error
-            }
+    do {
+      let output: String = try await Builtin.pipe(
+        { output in
+          defer {
+            e1.fulfill()
           }
-        )
-        .destination
-        switch expectedOutcome {
-        case .success(let expected):
-          XCTAssertEqual(
-            output,
-            expected,
-            file: file, line: line)
-        case .failure:
-          XCTFail("Succeeded when expecting failure", file: file, line: line)
+          try await operation(context, output)
+        },
+        to: { input in
+          defer {
+            e2.fulfill()
+          }
+          do {
+            return try await Output.nullDevice.withFileDescriptor(in: context) { output in
+              try await Builtin.withChannel(input: input, output: output, in: context) {
+                channel in
+                let x = try await channel.input.lines
+                  .reduce(into: [], { $0.append($1) })
+                  .joined(separator: "\n")
+                return x
+              }
+            }
+          } catch {
+            XCTFail(file: file, line: line)
+            throw error
+          }
         }
-      } catch {
-        switch expectedOutcome {
-        case .success:
-          throw error
-        case .failure:
-          /// Failure was expected
-          break
-        }
+      )
+      .destination
+      switch expectedOutcome {
+      case .success(let expected):
+        XCTAssertEqual(
+          output,
+          expected,
+          file: file, line: line)
+      case .failure:
+        XCTFail("Succeeded when expecting failure", file: file, line: line)
       }
-
+    } catch {
+      switch expectedOutcome {
+      case .success:
+        throw error
+      case .failure:
+        /// Failure was expected
+        break
+      }
     }
-    wait(for: [e1, e2], timeout: 2)
+    await fulfillment(of: [e1, e2], timeout: 2)
   }
 
   private static let supportFilePath = Bundle.module.path(forResource: "Cat", ofType: "txt")!
@@ -163,19 +189,20 @@ private extension Shwift.Process {
     standardOutput: FileDescriptor? = nil,
     in context: Context
   ) async throws {
-    var fileDescriptorMapping = FileDescriptorMapping()
-    if let standardInput = standardInput {
-      fileDescriptorMapping.addMapping(from: standardInput, to: STDIN_FILENO)
+    try await Input.nullDevice.withFileDescriptor(in: context) { inputNullDevice in
+      try await Output.nullDevice.withFileDescriptor(in: context) { outputNullDevice in
+        let fileDescriptorMapping: FileDescriptorMapping = [
+          STDIN_FILENO: standardInput ?? inputNullDevice,
+          STDOUT_FILENO: standardOutput ?? outputNullDevice,
+        ]
+        try await run(
+          executablePath: environment.searchForExecutables(named: executableName).matches.first!,
+          arguments: arguments,
+          environment: [:],
+          workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
+          fileDescriptorMapping: fileDescriptorMapping,
+          in: context)
+      }
     }
-    if let standardOutput = standardOutput {
-      fileDescriptorMapping.addMapping(from: standardOutput, to: STDOUT_FILENO)
-    }
-    try await run(
-      executablePath: environment.searchForExecutables(named: executableName).matches.first!,
-      arguments: arguments,
-      environment: [:],
-      workingDirectory: FilePath(FileManager.default.currentDirectoryPath),
-      fileDescriptorMapping: fileDescriptorMapping,
-      in: context)
   }
 }

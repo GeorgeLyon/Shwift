@@ -105,6 +105,13 @@ enum PosixSpawn {
   ) throws -> pid_t {
     var pid = pid_t()
 
+    /// I'm not aware of a way to pass a string containing `NUL` to `posix_spawn`
+    for string in [arguments, environment].flatMap({ $0 }) {
+      if string.contains("\0") {
+        throw InvalidParameter(parameter: string, issue: "contains NUL character")
+      }
+    }
+
     let cArguments = arguments.map { $0.withCString(strdup)! }
     defer { cArguments.forEach { $0.deallocate() } }
     let cEnvironment = environment.map { $0.withCString(strdup)! }
@@ -157,4 +164,9 @@ private extension Errno {
       throw Errno(rawValue: value)
     }
   }
+}
+
+private struct InvalidParameter: Error {
+  let parameter: String
+  let issue: String
 }
