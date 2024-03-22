@@ -91,6 +91,25 @@ extension Builtin {
 
       public struct AsyncIterator: AsyncIteratorProtocol {
         public mutating func next() async throws -> String? {
+          try await segments.next()
+        }
+        fileprivate var segments: Segments.AsyncIterator
+      }
+      public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(segments: segments.makeAsyncIterator())
+      }
+
+      fileprivate init(byteBuffers: ByteBuffers) {
+        segments = Segments(byteBuffers: byteBuffers, delimiter: "\n")
+      }
+      private let segments: Segments
+    }
+
+    public struct Segments: AsyncSequence {
+      public typealias Element = String
+
+      public struct AsyncIterator: AsyncIteratorProtocol {
+        public mutating func next() async throws -> String? {
           try await iterator.next()
         }
         fileprivate var iterator: AsyncThrowingStream<String, Error>.AsyncIterator
@@ -131,15 +150,15 @@ extension Builtin {
 
     /// Make a Lines iterator splitting at newlines
     public var lines: Lines {
-      segmented()
+      Lines(byteBuffers: byteBuffers)
     }
 
     /// Make a Lines iterator yielding text segments between delimiters (like split).
     ///
     /// - Parameter delimiter: Character separating input text to yield (and not itself yielded)  Defaults to newline.
     /// - Returns: Lines segmented by delimiter
-    public func segmented(by delimiter: Character = "\n") -> Lines {
-      Lines(byteBuffers: byteBuffers, delimiter: delimiter)
+    public func segments(separatedBy delimiter: Character) -> Segments {
+      Segments(byteBuffers: byteBuffers, delimiter: delimiter)
     }
 
     typealias ByteBuffers = AsyncCompactMapSequence<
