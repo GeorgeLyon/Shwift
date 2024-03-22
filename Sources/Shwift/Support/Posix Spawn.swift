@@ -111,7 +111,7 @@ enum PosixSpawn {
         throw InvalidParameter(parameter: string, issue: "contains NUL character")
       }
     }
-    
+
     let cArguments = arguments.map { $0.withCString(strdup)! }
     defer { cArguments.forEach { $0.deallocate() } }
     let cEnvironment = environment.map { $0.withCString(strdup)! }
